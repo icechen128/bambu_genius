@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(npx sv:*)",
+      "Bash(npm --version)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(npm install:*)",
+      "Bash(timeout 15 npm run dev)",
+      "Bash(bash -c \"which npm && npm install\")",
+      "Bash(bash -c \"which npm || true\")",
+      "Bash(bash -c \"npm install || true\")",
+      "Bash(echo $PATH)",
+      "Read(//opt/homebrew/**)",
+      "Bash(/opt/homebrew/Cellar/node/25.9.0_1/libexec/bin/npm install:*)",
+      "Bash(/opt/homebrew/Cellar/node/25.9.0_1/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js install)"
+    ]
+  }
+}
