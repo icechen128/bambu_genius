@@ -11,11 +11,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
   await deleteSession(token!);
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const clearCookie = `session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${isProduction ? '; Secure' : ''}`;
+
   return json(
     { ok: true },
     {
       headers: {
-        'Set-Cookie': 'session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0'
+        'Set-Cookie': clearCookie
       }
     }
   );
