@@ -1,5 +1,3 @@
-// src/lib/makerworld.ts
-
 export interface ParsedModel {
   model_id: string | null;
   model_name: string | null;
@@ -19,34 +17,45 @@ export function extractModelId(url: string): string | null {
   return match ? match[1] : null;
 }
 
-/** 构造 makerworld.com 规范 URL */
+/** 构造 MakerWorld 页面 URL */
 export function buildModelUrl(modelId: string): string {
   return `https://makerworld.com/models/${modelId}`;
 }
 
-/** 从 HTML 提取 <meta property="og:*"> 标签 */
-export function parseMetaTags(html: string): Pick<ParsedModel, 'model_name' | 'thumbnail_url'> {
-  const title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? null;
-  const image = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ?? null;
-  return { model_name: title, thumbnail_url: image };
+/** 构造 MakerWorld API URL */
+export function buildApiUrl(modelId: string): string {
+  return `https://makerworld.com/api/v1/design-service/design/${modelId}`;
 }
 
-/** 从 HTML 提取 JSON-LD 数据 */
-export function parseJsonLd(html: string): Pick<ParsedModel, 'model_name'> {
-  const scriptMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
-  if (!scriptMatch) return { model_name: null };
+interface MakerWorldFilament {
+  type: string;
+  color: string;
+  usedM: string;
+  usedG: string;
+}
 
-  try {
-    const data = JSON.parse(scriptMatch[1]) as Record<string, unknown>;
-    const name = typeof data.name === 'string' ? data.name : null;
-    return { model_name: name };
-  } catch {
-    return { model_name: null };
-  }
+interface MakerWorldInstance {
+  id: number;
+  weight: number;
+  prediction: number;
+  instanceFilaments: MakerWorldFilament[];
+}
+
+interface MakerWorldApiResponse {
+  id: number;
+  title: string;
+  coverUrl: string;
+  tags: string[];
+  defaultInstanceId: number;
+  instances: MakerWorldInstance[];
+  designCreator: {
+    name: string;
+    avatar: string;
+  };
 }
 
 /**
- * 主解析函数：fetch MakerWorld 页面并提取所有可用信息
+ * 主解析函数：调用 MakerWorld API 获取模型元数据
  * 在服务端调用，避免 CORS 问题
  */
 export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
@@ -66,59 +75,48 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
 
   if (!modelId) return base;
 
-  let html: string;
+  let data: MakerWorldApiResponse;
   try {
-    const fetchUrl = buildModelUrl(modelId);
-    const res = await fetch(fetchUrl, {
+    const res = await fetch(buildApiUrl(modelId), {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; BambuGenius/1.0)',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        'Accept': 'application/json'
       },
       signal: AbortSignal.timeout(10000)
     });
-    if (!res.ok) return base;
-    html = await res.text();
+    if (!res.ok) {
+      console.error(`[makerworld] API returned ${res.status} for model ${modelId}`);
+      return base;
+    }
+    data = await res.json() as MakerWorldApiResponse;
   } catch (err) {
-    console.error(`[makerworld] Failed to fetch ${buildModelUrl(modelId)}:`, err);
+    console.error(`[makerworld] Failed to fetch API for model ${modelId}:`, err);
     return base;
   }
 
-  // 优先级 1: JSON-LD
-  const jsonLd = parseJsonLd(html);
+  // 优先使用 defaultInstanceId 对应的实例，兜底取第一个
+  const defaultInstance =
+    data.instances?.find(i => i.id === data.defaultInstanceId)
+    ?? data.instances?.[0]
+    ?? null;
 
-  // 优先级 2: og meta 标签
-  const meta = parseMetaTags(html);
-
-  // 合并：JSON-LD 优先，meta 兜底
-  const model_name = jsonLd.model_name ?? meta.model_name;
-  const thumbnail_url = meta.thumbnail_url;
-
-  const raw_meta: Record<string, unknown> = {};
-
-  // 提取耗材克数（格式通常为 "xxg" 或数字）
-  const filamentMatch = html.match(/["']filament_weight["']\s*:\s*([\d.]+)/i)
-    ?? html.match(/([\d.]+)\s*g\s*(?:耗材|filament)/i);
-  const filament_grams = filamentMatch ? parseFloat(filamentMatch[1]) : null;
-
-  // 提取预计打印时长（分钟）
-  const timeMatch = html.match(/["']print_time["']\s*:\s*(\d+)/i);
-  const print_time_minutes = timeMatch ? parseInt(timeMatch[1], 10) : null;
-
-  // 提取颜色（使用 matchAll 保留捕获组）
-  const colorRegex = /["']color["']\s*:\s*["']([^"']+)["']/gi;
-  const colorMatches = [...html.matchAll(colorRegex)].map(m => m[1]);
-  const colors = colorMatches.length > 0 ? colorMatches : null;
-
-  if (filament_grams !== null) raw_meta.filament_grams_source = 'page_regex';
-  if (colors) raw_meta.colors_source = 'page_regex';
+  const filament_grams = defaultInstance?.weight ? Number(defaultInstance.weight) : null;
+  const print_time_minutes = defaultInstance?.prediction
+    ? Math.round(defaultInstance.prediction / 60)
+    : null;
+  const colors =
+    defaultInstance?.instanceFilaments?.map(f => f.color).filter(Boolean) ?? null;
 
   return {
-    ...base,
-    model_name,
-    thumbnail_url,
+    model_id: String(data.id),
+    model_name: data.title ?? null,
+    thumbnail_url: data.coverUrl ?? null,
+    designer_name: data.designCreator?.name ?? null,
+    designer_avatar_url: data.designCreator?.avatar ?? null,
     filament_grams,
     colors: colors && colors.length > 0 ? colors : null,
     print_time_minutes,
-    raw_meta: Object.keys(raw_meta).length > 0 ? raw_meta : null
+    tags: data.tags && data.tags.length > 0 ? data.tags : null,
+    raw_meta: data as unknown as Record<string, unknown>
   };
 }
