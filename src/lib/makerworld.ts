@@ -78,7 +78,8 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
     });
     if (!res.ok) return base;
     html = await res.text();
-  } catch {
+  } catch (err) {
+    console.error(`[makerworld] Failed to fetch ${buildModelUrl(modelId)}:`, err);
     return base;
   }
 
@@ -103,11 +104,10 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
   const timeMatch = html.match(/["']print_time["']\s*:\s*(\d+)/i);
   const print_time_minutes = timeMatch ? parseInt(timeMatch[1], 10) : null;
 
-  // 提取颜色
-  const colorMatches = html.match(/["']color["']\s*:\s*["']([^"']+)["']/gi);
-  const colors = colorMatches
-    ? colorMatches.map(m => m.replace(/["']color["']\s*:\s*["']/, '').replace(/["']$/, ''))
-    : null;
+  // 提取颜色（使用 matchAll 保留捕获组）
+  const colorRegex = /["']color["']\s*:\s*["']([^"']+)["']/gi;
+  const colorMatches = [...html.matchAll(colorRegex)].map(m => m[1]);
+  const colors = colorMatches.length > 0 ? colorMatches : null;
 
   if (filament_grams !== null) raw_meta.filament_grams_source = 'page_regex';
   if (colors) raw_meta.colors_source = 'page_regex';
