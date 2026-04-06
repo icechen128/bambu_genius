@@ -22,10 +22,15 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: '请求格式错误' }, { status: 400 });
   }
 
-  await query(
-    'INSERT INTO quota_records (delta, reason) VALUES ($1, $2)',
-    [delta, reason ?? null]
-  );
+  try {
+    await query(
+      'INSERT INTO quota_records (delta, reason) VALUES ($1, $2)',
+      [delta, reason ?? null]
+    );
+  } catch (err) {
+    console.error('[quota] DB error:', err);
+    return json({ error: '服务器内部错误' }, { status: 500 });
+  }
 
   return json({ ok: true });
 };
