@@ -2,32 +2,32 @@
 <script lang="ts">
   import type { PageData } from './$types';
 
-  export let data: PageData;
+  let { data }: { data: PageData } = $props();
 
   // 提交打印
-  let url = '';
-  let parsing = false;
-  let parsed: Record<string, unknown> | null = null;
-  let parseError = '';
-  let manualGrams = '';
-  let submitting = false;
-  let submitError = '';
+  let url = $state('');
+  let parsing = $state(false);
+  let parsed = $state<Record<string, unknown> | null>(null);
+  let parseError = $state('');
+  let manualGrams = $state('');
+  let submitting = $state(false);
+  let submitError = $state('');
 
   // 管理员面板
-  let showAdmin = false;
-  let adminPassword = '';
-  let loginError = '';
-  let loggingIn = false;
-  let adminDelta = '';
-  let adminReason = '';
-  let quotaError = '';
-  let quotaSuccess = '';
+  let showAdmin = $state(false);
+  let adminPassword = $state('');
+  let loginError = $state('');
+  let loggingIn = $state(false);
+  let adminDelta = $state('');
+  let adminReason = $state('');
+  let quotaError = $state('');
+  let quotaSuccess = $state('');
 
   // 加载更多
-  let currentPage = data.page;
-  let records = [...data.printRecords];
-  let hasMore = data.hasMore;
-  let loadingMore = false;
+  let currentPage = $state(data.page);
+  let records = $state([...data.printRecords]);
+  let hasMore = $state(data.hasMore);
+  let loadingMore = $state(false);
 
   async function handleParse() {
     parsing = true;
@@ -172,7 +172,7 @@
         <span class="text-sm text-gray-500">剩余额度</span>
       </div>
       <button
-        on:click={() => showAdmin = !showAdmin}
+        onclick={() => showAdmin = !showAdmin}
         class="text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
       >
         {data.isAdmin ? '管理面板' : '管理员登录'}
@@ -192,7 +192,7 @@
           class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
         />
         <button
-          on:click={handleParse}
+          onclick={handleParse}
           disabled={parsing || !url}
           class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50 transition-colors"
         >
@@ -252,7 +252,7 @@
         {/if}
 
         <button
-          on:click={handleSubmit}
+          onclick={handleSubmit}
           disabled={submitting}
           class="w-full py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 disabled:opacity-50 transition-colors"
         >
@@ -293,7 +293,7 @@
 
         {#if hasMore}
           <button
-            on:click={loadMore}
+            onclick={loadMore}
             disabled={loadingMore}
             class="w-full py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
           >
@@ -309,10 +309,7 @@
 {#if showAdmin}
   <div
     class="fixed inset-0 bg-black/30 z-20"
-    on:click={() => showAdmin = false}
-    role="button"
-    tabindex="-1"
-    on:keydown={() => {}}
+    onclick={() => showAdmin = false}
   ></div>
 
   <aside class="
@@ -323,7 +320,7 @@
     <div class="p-4 space-y-4">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold text-gray-800">管理面板</h2>
-        <button on:click={() => showAdmin = false} class="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+        <button onclick={() => showAdmin = false} class="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
       </div>
 
       {#if !data.isAdmin}
@@ -338,7 +335,7 @@
             <p class="text-red-500 text-sm">{loginError}</p>
           {/if}
           <button
-            on:click={handleLogin}
+            onclick={handleLogin}
             disabled={loggingIn}
             class="w-full py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50"
           >
@@ -375,13 +372,13 @@
 
           <div class="flex gap-2">
             <button
-              on:click={() => handleQuota('add')}
+              onclick={() => handleQuota('add')}
               class="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
             >
               + 增加额度
             </button>
             <button
-              on:click={() => handleQuota('subtract')}
+              onclick={() => handleQuota('subtract')}
               class="flex-1 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"
             >
               - 减少额度
@@ -404,7 +401,7 @@
           {/if}
 
           <button
-            on:click={handleLogout}
+            onclick={handleLogout}
             class="w-full py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg"
           >
             注销登录
