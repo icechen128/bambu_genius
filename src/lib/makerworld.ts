@@ -18,13 +18,13 @@ export function extractModelId(url: string): string | null {
 }
 
 /** 构造 MakerWorld 页面 URL */
-export function buildModelUrl(modelId: string): string {
-  return `https://makerworld.com/models/${modelId}`;
+export function buildModelUrl(modelId: string, domain = 'makerworld.com'): string {
+  return `https://${domain}/models/${modelId}`;
 }
 
-/** 构造 MakerWorld API URL */
-export function buildApiUrl(modelId: string): string {
-  return `https://makerworld.com/api/v1/design-service/design/${modelId}`;
+/** 构造 MakerWorld API URL（根据域名选对应站点） */
+export function buildApiUrl(modelId: string, domain = 'makerworld.com'): string {
+  return `https://${domain}/api/v1/design-service/design/${modelId}`;
 }
 
 interface MakerWorldFilament {
@@ -58,8 +58,18 @@ interface MakerWorldApiResponse {
  * 主解析函数：调用 MakerWorld API 获取模型元数据
  * 在服务端调用，避免 CORS 问题
  */
+/** 从 URL 提取域名（makerworld.com 或 makerworld.com.cn） */
+export function extractDomain(url: string): string {
+  return url.includes('makerworld.com.cn') ? 'makerworld.com.cn' : 'makerworld.com';
+}
+
+/**
+ * 主解析函数：调用 MakerWorld API 获取模型元数据
+ * 在服务端调用，避免 CORS 问题
+ */
 export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
   const modelId = extractModelId(url);
+  const domain = extractDomain(url);
   const base: ParsedModel = {
     model_id: modelId,
     model_name: null,
@@ -77,7 +87,7 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
 
   let data: MakerWorldApiResponse;
   try {
-    const res = await fetch(buildApiUrl(modelId), {
+    const res = await fetch(buildApiUrl(modelId, domain), {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; BambuGenius/1.0)',
         'Accept': 'application/json'
