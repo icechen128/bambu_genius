@@ -21,7 +21,6 @@
   let adminDelta = $state('');
   let adminReason = $state('');
   let quotaError = $state('');
-  let quotaSuccess = $state('');
 
   // 加载更多
   let currentPage = $state(data.page);
@@ -112,8 +111,7 @@
 
   async function handleQuota(type: 'add' | 'subtract') {
     quotaError = '';
-    quotaSuccess = '';
-    const delta = parseFloat(adminDelta) * (type === 'subtract' ? -1 : 1);
+    const delta = Math.abs(parseFloat(adminDelta)) * (type === 'subtract' ? -1 : 1);
     if (!adminDelta || isNaN(delta) || delta === 0) {
       quotaError = '请输入有效的克数';
       return;
@@ -125,7 +123,6 @@
         body: JSON.stringify({ delta, reason: adminReason })
       });
       if (res.ok) {
-        quotaSuccess = '已更新';
         adminDelta = '';
         adminReason = '';
         window.location.reload();
@@ -277,7 +274,7 @@
               {/if}
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium truncate">{record.model_name ?? '未知模型'}</p>
-                <p class="text-xs text-gray-500">{record.filament_grams}g</p>
+                <p class="text-xs text-gray-500">{parseFloat(record.filament_grams).toFixed(1)}g</p>
                 {#if record.colors && record.colors.length > 0}
                   <div class="flex gap-1 flex-wrap mt-0.5">
                     {#each record.colors as color}
@@ -365,9 +362,6 @@
 
           {#if quotaError}
             <p class="text-red-500 text-sm">{quotaError}</p>
-          {/if}
-          {#if quotaSuccess}
-            <p class="text-green-500 text-sm">{quotaSuccess}</p>
           {/if}
 
           <div class="flex gap-2">
