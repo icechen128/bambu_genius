@@ -1,12 +1,16 @@
 // src/lib/auth.ts
 
+import { timingSafeEqual } from 'crypto';
+
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
 
 /** 验证管理员密码是否正确 */
 export function checkPassword(password: string): boolean {
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) return false;
-  return password === adminPassword;
+  const a = Buffer.from(password);
+  const b = Buffer.from(adminPassword);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** 创建新的管理员 session，返回 token */
