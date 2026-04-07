@@ -87,20 +87,33 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
 
   let data: MakerWorldApiResponse;
   try {
-    const res = await fetch(buildApiUrl(modelId, domain), {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; BambuGenius/1.0)',
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!res.ok) {
-      console.error(`[makerworld] API returned ${res.status} for model ${modelId}`);
-      return base;
+    if (domain === 'makerworld.com.cn') {
+      // .com.cn 受 Cloudflare 保护，用无头浏览器加载页面，从 __NEXT_DATA__ 提取数据
+      const { fetchModelViaNextData } = await import('./browser-fetch');
+      const pageUrl = buildModelUrl(modelId, domain);
+      const raw = await fetchModelViaNextData(pageUrl);
+      if (!raw) {
+        console.error(`[makerworld] Browser fetch returned nothing for model ${modelId}`);
+        return base;
+      }
+      data = raw as unknown as MakerWorldApiResponse;
+    } else {
+      // .com 直接调 API，无 Cloudflare 拦截
+      const res = await fetch(buildApiUrl(modelId, domain), {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; BambuGenius/1.0)',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!res.ok) {
+        console.error(`[makerworld] API returned ${res.status} for model ${modelId}`);
+        return base;
+      }
+      data = await res.json() as MakerWorldApiResponse;
     }
-    data = await res.json() as MakerWorldApiResponse;
   } catch (err) {
-    console.error(`[makerworld] Failed to fetch API for model ${modelId}:`, err);
+    console.error(`[makerworld] Failed to fetch model ${modelId}:`, err);
     return base;
   }
 
