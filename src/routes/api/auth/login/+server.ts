@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { checkPassword, createSession, SESSION_DURATION_MS } from '$lib/auth';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, cookies }) => {
   let password: string;
   try {
     const body = await request.json() as { password?: unknown };
@@ -23,21 +23,14 @@ export const POST: RequestHandler = async ({ request }) => {
   const isSecure =
     request.url.startsWith('https://') ||
     request.headers.get('x-forwarded-proto') === 'https';
-  const cookieParts = [
-    `session=${token}`,
-    'HttpOnly',
-    'Path=/',
-    'SameSite=Strict',
-    `Max-Age=${SESSION_DURATION_MS / 1000}`
-  ];
-  if (isSecure) cookieParts.push('Secure');
 
-  return json(
-    { ok: true },
-    {
-      headers: {
-        'Set-Cookie': cookieParts.join('; ')
-      }
-    }
-  );
+  cookies.set('session', token, {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'strict',
+    maxAge: SESSION_DURATION_MS / 1000,
+    secure: isSecure
+  });
+
+  return json({ ok: true });
 };

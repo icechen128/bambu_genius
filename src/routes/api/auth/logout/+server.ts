@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { verifySession, deleteSession, extractTokenFromCookie } from '$lib/auth';
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, cookies }) => {
   const token = extractTokenFromCookie(request.headers.get('cookie'));
 
   if (!await verifySession(token)) {
@@ -11,15 +11,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   await deleteSession(token!);
 
-  const isProduction = process.env.NODE_ENV === 'production';
-  const clearCookie = `session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${isProduction ? '; Secure' : ''}`;
+  cookies.delete('session', { path: '/' });
 
-  return json(
-    { ok: true },
-    {
-      headers: {
-        'Set-Cookie': clearCookie
-      }
-    }
-  );
+  return json({ ok: true });
 };
