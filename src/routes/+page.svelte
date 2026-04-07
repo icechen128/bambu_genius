@@ -18,9 +18,18 @@
   let parsed = $state<Record<string, unknown> | null>(null);
   let parseError = $state('');
   let selectedInstance = $state<ParsedInstance | null>(null);
+  // 实际使用的颜色（可自定义，初始值来自配置推荐色）
+  let customColors = $state<string[]>([]);
   let manualGrams = $state('');
   let submitting = $state(false);
   let submitError = $state('');
+
+  // 当选中配置改变时，重置为推荐色
+  $effect(() => {
+    customColors = selectedInstance?.colors?.length
+      ? [...selectedInstance.colors]
+      : [];
+  });
 
   // 管理员面板
   let showAdmin = $state(false);
@@ -72,6 +81,9 @@
         const instances = body.instances as ParsedInstance[] | null;
         if (instances && instances.length === 1) {
           selectedInstance = instances[0];
+        } else {
+          selectedInstance = null;
+          customColors = (body.colors as string[] | null) ?? [];
         }
       }
     } catch {
@@ -95,7 +107,7 @@
       ...parsed,
       makerworld_url: url,
       filament_grams: grams,
-      colors: inst?.colors ?? parsed?.colors,
+      colors: customColors.length > 0 ? customColors : null,
       print_time_minutes: inst?.print_time_minutes ?? parsed?.print_time_minutes,
       instance_id: inst?.id ?? parsed?.instance_id,
       instance_title: inst?.title ?? parsed?.instance_title,
@@ -114,6 +126,7 @@
         url = '';
         parsed = null;
         selectedInstance = null;
+        customColors = [];
         manualGrams = '';
         window.location.reload();
       }
@@ -360,9 +373,6 @@
               {#if selectedInstance.print_time_minutes}
                 <span class="stat-pill stat-time">⏱ {fmtTime(selectedInstance.print_time_minutes)}</span>
               {/if}
-              {#each selectedInstance.colors as c}
-                <span class="swatch swatch-lg" style="background:{c}" title={c}></span>
-              {/each}
             </div>
           </div>
         {:else if !(parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1)}
@@ -375,6 +385,49 @@
               class="manual-input"
             />
             <span class="manual-unit">g</span>
+          </div>
+        {/if}
+
+        <!-- 颜色自定义区（有配置或有推荐色时均显示） -->
+        {#if selectedInstance || (parsed.colors && Array.isArray(parsed.colors))}
+          <div class="color-editor">
+            <p class="color-editor-label">🎨 实际使用的颜色</p>
+            <div class="color-editor-row">
+              {#each customColors as color, i}
+                <label class="color-swatch-btn" title={color}>
+                  <span class="color-swatch-preview" style="background:{color}"></span>
+                  <input
+                    type="color"
+                    value={color}
+                    oninput={(e) => {
+                      const arr = [...customColors];
+                      arr[i] = (e.target as HTMLInputElement).value;
+                      customColors = arr;
+                    }}
+                    class="color-native-input"
+                  />
+                  <button
+                    class="color-remove-btn"
+                    onclick={() => { customColors = customColors.filter((_, j) => j !== i); }}
+                    title="移除此颜色"
+                    type="button"
+                  >✕</button>
+                </label>
+              {/each}
+              <!-- 添加颜色 -->
+              <label class="color-add-btn" title="添加颜色">
+                <span>＋</span>
+                <input
+                  type="color"
+                  value="#ffffff"
+                  onchange={(e) => {
+                    customColors = [...customColors, (e.target as HTMLInputElement).value];
+                    (e.target as HTMLInputElement).value = '#ffffff';
+                  }}
+                  class="color-native-input"
+                />
+              </label>
+            </div>
           </div>
         {/if}
 
@@ -860,6 +913,100 @@
     flex-shrink: 0;
   }
   .swatch-lg { width: 18px; height: 18px; }
+
+  /* ── 颜色编辑器 ── */
+  .color-editor {
+    margin-top: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+  .color-editor-label {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #94a3b8;
+    margin: 0 0 10px;
+  }
+  .color-editor-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  /* 每个色块 = label 包裹 hidden color input */
+  .color-swatch-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .color-swatch-preview {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.2);
+    display: block;
+    transition: border-color 0.2s, transform 0.15s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .color-swatch-btn:hover .color-swatch-preview {
+    border-color: rgba(255,255,255,0.6);
+    transform: scale(1.1);
+  }
+  .color-native-input {
+    position: absolute;
+    width: 0; height: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .color-swatch-btn:focus-within .color-swatch-preview {
+    border-color: #a78bfa;
+    outline: 2px solid #a78bfa;
+    outline-offset: 2px;
+  }
+  /* 悬停时显示删除按钮 */
+  .color-remove-btn {
+    position: absolute;
+    top: -5px; right: -5px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: white;
+    font-size: 0.55rem;
+    font-weight: 900;
+    border: none;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0;
+    z-index: 1;
+  }
+  .color-swatch-btn:hover .color-remove-btn { display: flex; }
+  /* 添加颜色按钮 */
+  .color-add-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 2px dashed rgba(167,139,250,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #a78bfa;
+    font-size: 1.1rem;
+    font-weight: 700;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    position: relative;
+  }
+  .color-add-btn:hover {
+    border-color: #a78bfa;
+    background: rgba(167,139,250,0.1);
+    transform: scale(1.1);
+  }
 
   /* ── 手动克数 ── */
   .manual-row {
