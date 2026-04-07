@@ -20,7 +20,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const token = await createSession();
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isSecure =
+    request.url.startsWith('https://') ||
+    request.headers.get('x-forwarded-proto') === 'https';
   const cookieParts = [
     `session=${token}`,
     'HttpOnly',
@@ -28,7 +30,7 @@ export const POST: RequestHandler = async ({ request }) => {
     'SameSite=Strict',
     `Max-Age=${SESSION_DURATION_MS / 1000}`
   ];
-  if (isProduction) cookieParts.push('Secure');
+  if (isSecure) cookieParts.push('Secure');
 
   return json(
     { ok: true },
