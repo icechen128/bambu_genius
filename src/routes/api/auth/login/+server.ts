@@ -20,14 +20,16 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
   const token = await createSession();
 
-  console.log('[login] request.url prefix:', request.url.slice(0, 30), '| x-forwarded-proto:', request.headers.get('x-forwarded-proto'));
+  const isSecure =
+    request.url.startsWith('https://') ||
+    request.headers.get('x-forwarded-proto') === 'https';
 
   cookies.set('session', token, {
     httpOnly: true,
     path: '/',
     sameSite: 'strict',
     maxAge: SESSION_DURATION_MS / 1000,
-    secure: false
+    secure: isSecure
   });
 
   return json({ ok: true });
