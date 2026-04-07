@@ -7,8 +7,8 @@ services:
     environment:
       - DATABASE_URL=postgres://bambu:${POSTGRES_PASSWORD}@postgres:5432/bambu_genius
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - BAMBU_USERNAME=${BAMBU_USERNAME:-}
-      - BAMBU_PASSWORD=${BAMBU_PASSWORD:-}
+      # 可选：若部署环境需要代理才能访问 makerworld.com.cn，取消注释并填入代理地址
+      # - HTTPS_PROXY=http://your-proxy:port
     depends_on:
       postgres:
         condition: service_healthy

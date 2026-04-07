@@ -12,6 +12,23 @@
     slots: FilamentSlot[];
   }
   interface Filament { id: number; color: string; material: string; nickname: string | null; }
+  interface FilamentUsageEntry { slot_index: number; filament_id: number | null; color: string; material: string; grams: number; }
+  interface PrintRecord {
+    id: number;
+    makerworld_url: string;
+    model_name: string | null;
+    model_id: string | null;
+    thumbnail_url: string | null;
+    designer_name: string | null;
+    filament_grams: string;
+    colors: string[] | null;
+    print_time_minutes: number | null;
+    note: string | null;
+    instance_id: string | null;
+    instance_title: string | null;
+    filament_usage: FilamentUsageEntry[] | null;
+    created_at: string;
+  }
 
   // 提交打印
   let url = $state('');
@@ -59,9 +76,12 @@
 
   // 加载更多
   let currentPage = $state(data.page);
-  let records = $state([...data.printRecords]);
+  let records = $state<PrintRecord[]>([...data.printRecords]);
   let hasMore = $state(data.hasMore);
   let loadingMore = $state(false);
+
+  // 详情弹窗
+  let selectedRecord = $state<PrintRecord | null>(null);
 
   // 能量槽百分比
   const pct = $derived(
@@ -537,7 +557,7 @@
       {:else}
         <div class="history-grid">
           {#each records as record (record.id)}
-            <div class="history-card">
+            <button class="history-card" onclick={() => selectedRecord = record} type="button">
               {#if record.thumbnail_url}
                 <img src={record.thumbnail_url} alt="thumb" class="history-thumb" />
               {:else}
@@ -560,7 +580,7 @@
                 </div>
                 <p class="history-date">🕐 {formatDate(record.created_at)}</p>
               </div>
-            </div>
+            </button>
           {/each}
         </div>
 
@@ -577,6 +597,102 @@
     </section>
   </main>
 </div>
+
+<!-- ═══ 打印详情弹窗 ═══ -->
+{#if selectedRecord}
+  {@const r = selectedRecord}
+  <div class="overlay" onclick={() => selectedRecord = null} role="presentation"></div>
+  <div class="detail-panel" role="dialog" aria-modal="true">
+    <div class="detail-inner">
+
+      <!-- 关闭 -->
+      <button class="detail-close" onclick={() => selectedRecord = null} type="button">✕</button>
+
+      <!-- 封面 -->
+      {#if r.thumbnail_url}
+        <img src={r.thumbnail_url} alt="封面" class="detail-cover" />
+      {:else}
+        <div class="detail-cover-placeholder">🧩</div>
+      {/if}
+
+      <!-- 标题区 -->
+      <div class="detail-titles">
+        <h2 class="detail-name">{r.model_name ?? '未知模型'}</h2>
+        {#if r.instance_title}
+          <p class="detail-instance">📋 {r.instance_title}</p>
+        {/if}
+        {#if r.designer_name}
+          <p class="detail-designer">✏️ {r.designer_name}</p>
+        {/if}
+      </div>
+
+      <!-- 关键数据 -->
+      <div class="detail-stats">
+        <div class="detail-stat">
+          <span class="detail-stat-label">耗材用量</span>
+          <span class="detail-stat-value">{parseFloat(r.filament_grams).toFixed(1)}<em>g</em></span>
+        </div>
+        {#if r.print_time_minutes}
+          <div class="detail-stat">
+            <span class="detail-stat-label">打印时长</span>
+            <span class="detail-stat-value">{fmtTime(r.print_time_minutes)}</span>
+          </div>
+        {/if}
+        <div class="detail-stat">
+          <span class="detail-stat-label">记录时间</span>
+          <span class="detail-stat-value detail-stat-date">{formatDate(r.created_at)}</span>
+        </div>
+      </div>
+
+      <!-- 每槽耗材详情（有 filament_usage 时展示） -->
+      {#if r.filament_usage?.length}
+        <div class="detail-section">
+          <p class="detail-section-title">🎨 耗材用色</p>
+          <div class="detail-slots">
+            {#each r.filament_usage as u}
+              <div class="detail-slot">
+                <span class="detail-slot-swatch" style="background:{u.color}"></span>
+                <div class="detail-slot-info">
+                  <span class="detail-slot-material">{u.material}</span>
+                  <span class="detail-slot-color">{u.color.toUpperCase()}</span>
+                </div>
+                <span class="detail-slot-grams">{u.grams.toFixed(1)}g</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {:else if r.colors?.length}
+        <div class="detail-section">
+          <p class="detail-section-title">🎨 配色</p>
+          <div class="detail-colors">
+            {#each r.colors as c}
+              <span class="detail-swatch" style="background:{c}" title={c}></span>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- 备注 -->
+      {#if r.note}
+        <div class="detail-section">
+          <p class="detail-section-title">📝 备注</p>
+          <p class="detail-note">{r.note}</p>
+        </div>
+      {/if}
+
+      <!-- 跳转按钮 -->
+      <a
+        href={r.makerworld_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn-makerworld"
+      >
+        🌐 在 MakerWorld 查看模型
+      </a>
+
+    </div>
+  </div>
+{/if}
 
 <!-- ═══ 管理员面板 ═══ -->
 {#if showAdmin}
@@ -1167,17 +1283,6 @@
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 12px;
   }
-  .history-card {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px;
-    overflow: hidden;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .history-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
-  }
   .history-thumb {
     width: 100%; aspect-ratio: 1;
     object-fit: cover;
@@ -1229,6 +1334,144 @@
   }
   .btn-loadmore:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #e2e8f0; }
   .btn-loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── 历史卡片作为按钮 ── */
+  .history-card {
+    all: unset;
+    display: block;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .history-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  }
+
+  /* ── 打印详情弹窗 ── */
+  .detail-panel {
+    position: fixed;
+    z-index: 30;
+    bottom: 0; left: 0; right: 0;
+    max-height: 90vh;
+    background: #111827;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 24px 24px 0 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  @media (min-width: 600px) {
+    .detail-panel {
+      top: 50%; bottom: auto; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 480px;
+      max-height: 85vh;
+      border-radius: 24px;
+    }
+  }
+  .detail-inner { padding: 20px; position: relative; }
+  .detail-close {
+    position: absolute; top: 16px; right: 16px;
+    background: rgba(255,255,255,0.1); border: none;
+    color: #94a3b8; font-size: 0.9rem;
+    width: 32px; height: 32px; border-radius: 50%;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .detail-close:hover { background: rgba(255,255,255,0.18); color: #e2e8f0; }
+
+  .detail-cover {
+    width: 100%; aspect-ratio: 4/3;
+    object-fit: cover; border-radius: 16px;
+    margin-bottom: 16px; display: block;
+  }
+  .detail-cover-placeholder {
+    width: 100%; aspect-ratio: 4/3;
+    background: rgba(255,255,255,0.05);
+    border-radius: 16px; margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3rem;
+  }
+
+  .detail-titles { margin-bottom: 14px; }
+  .detail-name {
+    font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 1.1rem;
+    color: #f1f5f9; margin: 0 0 4px; line-height: 1.3;
+    padding-right: 36px;
+  }
+  .detail-instance { font-size: 0.8rem; color: #94a3b8; margin: 0 0 3px; }
+  .detail-designer { font-size: 0.78rem; color: #475569; margin: 0; }
+
+  .detail-stats {
+    display: flex; gap: 0;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; margin-bottom: 16px; overflow: hidden;
+  }
+  .detail-stat {
+    flex: 1; padding: 10px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+  }
+  .detail-stat:last-child { border-right: none; }
+  .detail-stat-label { font-size: 0.65rem; color: #475569; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .detail-stat-value {
+    font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 1.05rem; color: #67e8f9;
+  }
+  .detail-stat-value em { font-style: normal; font-size: 0.68rem; color: #475569; }
+  .detail-stat-date { font-size: 0.78rem; color: #94a3b8; text-align: center; line-height: 1.2; }
+
+  .detail-section { margin-bottom: 14px; }
+  .detail-section-title { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 8px; }
+
+  .detail-slots { display: flex; flex-direction: column; gap: 6px; }
+  .detail-slot {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.04); border-radius: 10px; padding: 8px 10px;
+  }
+  .detail-slot-swatch {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.15);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .detail-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .detail-slot-material {
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.8rem;
+    color: #c4b5fd;
+  }
+  .detail-slot-color { font-size: 0.68rem; color: #475569; font-family: monospace; }
+  .detail-slot-grams { font-size: 0.82rem; font-weight: 700; color: #67e8f9; flex-shrink: 0; }
+
+  .detail-colors { display: flex; gap: 8px; flex-wrap: wrap; }
+  .detail-swatch {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.15);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  .detail-note {
+    font-size: 0.88rem; color: #94a3b8; margin: 0;
+    background: rgba(255,255,255,0.04); border-radius: 10px; padding: 10px 12px;
+    line-height: 1.5;
+  }
+
+  .btn-makerworld {
+    display: block; width: 100%; box-sizing: border-box;
+    padding: 13px; text-align: center;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa);
+    color: white; font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 0.95rem;
+    border-radius: 14px; text-decoration: none;
+    box-shadow: 0 4px 20px rgba(96,165,250,0.3);
+    transition: transform 0.15s, box-shadow 0.15s;
+    margin-top: 4px;
+  }
+  .btn-makerworld:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(96,165,250,0.45); }
 
   /* ── 管理员面板 ── */
   .overlay {

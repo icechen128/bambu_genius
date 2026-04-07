@@ -15,6 +15,9 @@ interface PrintRecord {
   colors: string[] | null;
   print_time_minutes: number | null;
   note: string | null;
+  instance_id: string | null;
+  instance_title: string | null;
+  filament_usage: unknown | null;
   created_at: string;
 }
 
@@ -52,7 +55,7 @@ export const load: PageServerLoad = async ({ request, url }) => {
     printRecords = await query<PrintRecord>(`
       SELECT id, makerworld_url, model_name, model_id, thumbnail_url,
              designer_name, filament_grams, colors, print_time_minutes,
-             note, created_at
+             note, instance_id, instance_title, filament_usage, created_at
       FROM print_records
       ORDER BY created_at DESC
       LIMIT $1 OFFSET $2

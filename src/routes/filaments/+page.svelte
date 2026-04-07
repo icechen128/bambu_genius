@@ -10,6 +10,8 @@
     material: string;
     nickname: string | null;
     created_at: string;
+    total_grams: number;
+    print_count: number;
   }
 
   const MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'PA', 'PC', 'HIPS', 'PVA', '其他'];
@@ -56,6 +58,10 @@
       // ignore
     }
   }
+
+  // 统计
+  const totalConsumed = $derived(filaments.reduce((s, f) => s + f.total_grams, 0));
+  const maxGrams = $derived(Math.max(...filaments.map(f => f.total_grams), 1));
 </script>
 
 <svelte:head>
@@ -130,24 +136,61 @@
       </div>
     </section>
 
-    <!-- 耗材列表 -->
+    <!-- 耗材列表 + 消耗统计 -->
     <section class="card">
       <h2 class="card-title">📦 已有耗材（{filaments.length} 种）</h2>
+
       {#if filaments.length === 0}
         <div class="empty">
           <p>还没有添加任何耗材，先添加几种吧 👆</p>
         </div>
       {:else}
+
+        <!-- 消耗总览 -->
+        {#if totalConsumed > 0}
+          <div class="stats-banner">
+            <div class="stats-item">
+              <span class="stats-label">累计消耗</span>
+              <span class="stats-value">{totalConsumed.toFixed(1)} <em>g</em></span>
+            </div>
+            <div class="stats-divider"></div>
+            <div class="stats-item">
+              <span class="stats-label">已用耗材种数</span>
+              <span class="stats-value">{filaments.filter(f => f.print_count > 0).length} <em>种</em></span>
+            </div>
+            <div class="stats-divider"></div>
+            <div class="stats-item">
+              <span class="stats-label">最多用量</span>
+              <span class="stats-value" style="color:{filaments.reduce((a,b)=>b.total_grams>a.total_grams?b:a).color}">
+                {filaments.reduce((a,b)=>b.total_grams>a.total_grams?b:a).total_grams.toFixed(1)} <em>g</em>
+              </span>
+            </div>
+          </div>
+        {/if}
+
         <div class="filament-list">
           {#each filaments as f (f.id)}
             <div class="filament-row">
               <span class="filament-swatch" style="background:{f.color}"></span>
               <div class="filament-info">
-                <span class="filament-material">{f.material}</span>
-                {#if f.nickname}
-                  <span class="filament-nickname">{f.nickname}</span>
+                <div class="filament-meta-row">
+                  <span class="filament-material">{f.material}</span>
+                  {#if f.nickname}
+                    <span class="filament-nickname">{f.nickname}</span>
+                  {/if}
+                  <span class="filament-hex">{f.color.toUpperCase()}</span>
+                </div>
+                {#if f.total_grams > 0}
+                  <div class="usage-bar-wrap">
+                    <div class="usage-bar" style="width:{(f.total_grams/maxGrams*100).toFixed(1)}%; background:{f.color}"></div>
+                  </div>
+                  <div class="usage-numbers">
+                    <span class="usage-grams">{f.total_grams.toFixed(1)} g 已用</span>
+                    <span class="usage-prints">{f.print_count} 次打印</span>
+                  </div>
+                {:else}
+                  <span class="usage-none">尚未使用</span>
                 {/if}
-                <span class="filament-hex">{f.color.toUpperCase()}</span>
               </div>
               <button
                 class="btn-delete"
@@ -286,9 +329,23 @@
   /* ── 列表 ── */
   .empty { text-align: center; padding: 24px; color: #475569; font-size: 0.9rem; }
 
+  /* 总览横幅 */
+  .stats-banner {
+    display: flex; align-items: center; gap: 0;
+    background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2);
+    border-radius: 14px; padding: 12px 16px; margin-bottom: 14px;
+  }
+  .stats-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stats-label { font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stats-value {
+    font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 1.15rem; color: #e2e8f0;
+  }
+  .stats-value em { font-style: normal; font-size: 0.72rem; color: #64748b; margin-left: 1px; }
+  .stats-divider { width: 1px; height: 32px; background: rgba(255,255,255,0.08); flex-shrink: 0; }
+
   .filament-list { display: flex; flex-direction: column; gap: 8px; }
   .filament-row {
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: flex-start; gap: 12px;
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
     border-radius: 14px; padding: 10px 12px;
     transition: background 0.15s;
@@ -299,8 +356,10 @@
     width: 36px; height: 36px; border-radius: 50%;
     border: 3px solid rgba(255,255,255,0.2);
     flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    margin-top: 2px;
   }
-  .filament-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .filament-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .filament-meta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .filament-material {
     font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.88rem;
     background: rgba(167,139,250,0.2); color: #c4b5fd;
@@ -309,10 +368,25 @@
   .filament-nickname { font-size: 0.85rem; color: #e2e8f0; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .filament-hex { font-size: 0.72rem; color: #475569; font-family: monospace; flex-shrink: 0; }
 
+  /* 用量进度条 */
+  .usage-bar-wrap {
+    height: 5px; border-radius: 99px;
+    background: rgba(255,255,255,0.08); overflow: hidden;
+  }
+  .usage-bar {
+    height: 100%; border-radius: 99px;
+    opacity: 0.75;
+    transition: width 0.4s ease;
+  }
+  .usage-numbers { display: flex; gap: 10px; }
+  .usage-grams { font-size: 0.78rem; font-weight: 700; color: #94a3b8; }
+  .usage-prints { font-size: 0.78rem; color: #475569; }
+  .usage-none { font-size: 0.75rem; color: #334155; font-style: italic; }
+
   .btn-delete {
     background: none; border: none; cursor: pointer; font-size: 1rem;
     opacity: 0.4; transition: opacity 0.15s, transform 0.15s;
-    padding: 4px; flex-shrink: 0;
+    padding: 4px; flex-shrink: 0; margin-top: 2px;
   }
   .btn-delete:hover { opacity: 1; transform: scale(1.15); }
 </style>
