@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
+		"generate-icons": "node scripts/generate-icons.mjs",
 		"preview": "vite preview",
 		"test": "vitest run",
 		"prepare": "svelte-kit sync || echo ''",
@@ -19,6 +20,7 @@
 		"@tailwindcss/vite": "^4.2.2",
 		"@types/pg": "^8.20.0",
 		"@vitest/ui": "^4.1.2",
+		"sharp": "^0.33.5",
 		"svelte": "^5.54.0",
 		"svelte-check": "^4.4.2",
 		"tailwindcss": "^4.2.2",
