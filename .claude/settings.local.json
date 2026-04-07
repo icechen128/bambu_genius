@@ -64,7 +64,11 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" npm install playwright)",
       "Bash(PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" npx playwright install chromium)",
       "Bash(PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" node -e \":*)",
-      "Bash(/opt/homebrew/opt/postgresql@17/bin/psql postgresql://user:password@127.0.0.1/bambu -c \"ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_id TEXT; ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_title TEXT;\")"
+      "Bash(/opt/homebrew/opt/postgresql@17/bin/psql postgresql://user:password@127.0.0.1/bambu -c \"ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_id TEXT; ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_title TEXT;\")",
+      "Bash(curl -s -X POST http://localhost:5173/api/parse -H \"Content-Type: application/json\" -d '{\"\"\"\"url\"\"\"\":\"\"\"\"https://makerworld.com.cn/models/376231\"\"\"\"}')",
+      "Bash(python3 -c \":*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''thumbnail_url:'''', d[''''thumbnail_url'''']\\)\")",
+      "Bash(/opt/homebrew/opt/postgresql@17/bin/psql postgresql://user:password@127.0.0.1/bambu -c \":*)"
     ]
   }
 }

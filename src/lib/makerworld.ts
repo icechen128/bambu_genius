@@ -1,3 +1,11 @@
+/** 单个颜色槽（对应一根耗材） */
+export interface FilamentSlot {
+  index: number;
+  color: string;       // 推荐颜色（十六进制）
+  material: string;    // 推荐材质（PLA / PETG …）
+  grams: number;       // 该槽消耗克数
+}
+
 /** 单个打印配置（一个模型可能有多个） */
 export interface ParsedInstance {
   id: number;
@@ -5,6 +13,7 @@ export interface ParsedInstance {
   filament_grams: number;
   print_time_minutes: number;
   colors: string[];
+  slots: FilamentSlot[];
 }
 
 export interface ParsedModel {
@@ -144,13 +153,22 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
   }
 
   // 将所有打印配置整理为统一结构
-  const instances: ParsedInstance[] = (data.instances ?? []).map(inst => ({
-    id: inst.id,
-    title: inst.title || `配置 ${inst.id}`,
-    filament_grams: Number(inst.weight) || 0,
-    print_time_minutes: inst.prediction ? Math.round(inst.prediction / 60) : 0,
-    colors: inst.instanceFilaments?.map(f => f.color).filter(Boolean) ?? []
-  }));
+  const instances: ParsedInstance[] = (data.instances ?? []).map(inst => {
+    const filaments = inst.instanceFilaments ?? [];
+    return {
+      id: inst.id,
+      title: inst.title || `配置 ${inst.id}`,
+      filament_grams: Number(inst.weight) || 0,
+      print_time_minutes: inst.prediction ? Math.round(inst.prediction / 60) : 0,
+      colors: filaments.map(f => f.color).filter(Boolean),
+      slots: filaments.map((f, i) => ({
+        index: i,
+        color: f.color,
+        material: f.type,
+        grams: parseFloat(f.usedG) || 0
+      }))
+    };
+  });
 
   // 默认选中 defaultInstanceId，兜底取第一个
   const defaultInst =

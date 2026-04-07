@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS print_records (
 -- 为已存在的表补充字段（幂等）
 ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_id TEXT;
 ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_title TEXT;
+ALTER TABLE print_records ADD COLUMN IF NOT EXISTS filament_usage JSONB;
+
+-- 耗材库：用户自己的耗材（颜色 + 材质）
+CREATE TABLE IF NOT EXISTS filaments (
+  id         SERIAL PRIMARY KEY,
+  color      TEXT NOT NULL,         -- 十六进制颜色，如 #FF0000
+  material   TEXT NOT NULL,         -- PLA / PETG / ABS / ASA / TPU / PA / PC
+  nickname   TEXT,                  -- 自定义备注，如 "红色 PLA（海洋版）"
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS quota_records (
   id         SERIAL PRIMARY KEY,

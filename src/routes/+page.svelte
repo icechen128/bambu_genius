@@ -4,13 +4,14 @@
 
   let { data }: { data: PageData } = $props();
 
+  interface FilamentSlot { index: number; color: string; material: string; grams: number; }
   interface ParsedInstance {
-    id: number;
-    title: string;
-    filament_grams: number;
-    print_time_minutes: number;
+    id: number; title: string;
+    filament_grams: number; print_time_minutes: number;
     colors: string[];
+    slots: FilamentSlot[];
   }
+  interface Filament { id: number; color: string; material: string; nickname: string | null; }
 
   // 提交打印
   let url = $state('');
@@ -18,18 +19,34 @@
   let parsed = $state<Record<string, unknown> | null>(null);
   let parseError = $state('');
   let selectedInstance = $state<ParsedInstance | null>(null);
-  // 实际使用的颜色（可自定义，初始值来自配置推荐色）
-  let customColors = $state<string[]>([]);
+  // 每个颜色槽选中的耗材（null = 未选 / 使用推荐色）
+  let slotFilaments = $state<(Filament | null)[]>([]);
+  // 展开选择器的槽位序号（-1 表示关闭）
+  let openSlot = $state(-1);
+  // 耗材库
+  let filaments = $state<Filament[]>([]);
+  let loadingFilaments = $state(false);
   let manualGrams = $state('');
   let submitting = $state(false);
   let submitError = $state('');
 
-  // 当选中配置改变时，重置为推荐色
+  // 选中配置变化时重置槽位
   $effect(() => {
-    customColors = selectedInstance?.colors?.length
-      ? [...selectedInstance.colors]
-      : [];
+    const slots = selectedInstance?.slots ?? [];
+    slotFilaments = slots.map(() => null);
+    openSlot = -1;
   });
+
+  async function loadFilaments() {
+    if (filaments.length > 0 || loadingFilaments) return;
+    loadingFilaments = true;
+    try {
+      const res = await fetch('/api/filaments');
+      if (res.ok) filaments = await res.json();
+    } catch { /* ignore */ } finally {
+      loadingFilaments = false;
+    }
+  }
 
   // 管理员面板
   let showAdmin = $state(false);
@@ -83,8 +100,9 @@
           selectedInstance = instances[0];
         } else {
           selectedInstance = null;
-          customColors = (body.colors as string[] | null) ?? [];
         }
+        // 预加载耗材库
+        loadFilaments();
       }
     } catch {
       parseError = '网络错误，请稍后重试';
@@ -103,11 +121,27 @@
       submitting = false;
       return;
     }
+    // 构建每槽耗材使用记录
+    const slots = selectedInstance?.slots ?? [];
+    const filament_usage = slots.length > 0
+      ? slots.map((slot, i) => {
+          const chosen = slotFilaments[i];
+          return {
+            slot_index: i,
+            filament_id: chosen?.id ?? null,
+            color: chosen?.color ?? slot.color,
+            material: chosen?.material ?? slot.material,
+            grams: slot.grams
+          };
+        })
+      : undefined;
+
     const payload = {
       ...parsed,
       makerworld_url: url,
       filament_grams: grams,
-      colors: customColors.length > 0 ? customColors : null,
+      colors: filament_usage ? filament_usage.map(u => u.color) : null,
+      filament_usage,
       print_time_minutes: inst?.print_time_minutes ?? parsed?.print_time_minutes,
       instance_id: inst?.id ?? parsed?.instance_id,
       instance_title: inst?.title ?? parsed?.instance_title,
@@ -126,7 +160,7 @@
         url = '';
         parsed = null;
         selectedInstance = null;
-        customColors = [];
+        slotFilaments = [];
         manualGrams = '';
         window.location.reload();
       }
@@ -265,10 +299,13 @@
         {/if}
       </div>
 
-      <!-- 管理按钮 -->
-      <button class="admin-btn" onclick={() => showAdmin = !showAdmin}>
-        {data.isAdmin ? '⚙️' : '🔐'}
-      </button>
+      <!-- 快捷按钮 -->
+      <div class="header-btns">
+        <a href="/filaments" class="icon-btn" title="耗材库">🎨</a>
+        <button class="icon-btn admin-btn" onclick={() => showAdmin = !showAdmin} title={data.isAdmin ? '管理面板' : '管理员登录'}>
+          {data.isAdmin ? '⚙️' : '🔐'}
+        </button>
+      </div>
     </div>
   </header>
 
@@ -388,45 +425,82 @@
           </div>
         {/if}
 
-        <!-- 颜色自定义区（有配置或有推荐色时均显示） -->
-        {#if selectedInstance || (parsed.colors && Array.isArray(parsed.colors))}
-          <div class="color-editor">
-            <p class="color-editor-label">🎨 实际使用的颜色</p>
-            <div class="color-editor-row">
-              {#each customColors as color, i}
-                <label class="color-swatch-btn" title={color}>
-                  <span class="color-swatch-preview" style="background:{color}"></span>
-                  <input
-                    type="color"
-                    value={color}
-                    oninput={(e) => {
-                      const arr = [...customColors];
-                      arr[i] = (e.target as HTMLInputElement).value;
-                      customColors = arr;
-                    }}
-                    class="color-native-input"
-                  />
-                  <button
-                    class="color-remove-btn"
-                    onclick={() => { customColors = customColors.filter((_, j) => j !== i); }}
-                    title="移除此颜色"
-                    type="button"
-                  >✕</button>
-                </label>
+        <!-- 颜色槽位分配（有配置且有槽位数据时显示） -->
+        {#if selectedInstance?.slots?.length}
+          <div class="slots-section">
+            <div class="slots-header">
+              <p class="slots-label">🎨 选择实际使用的耗材</p>
+              <a href="/filaments" class="slots-manage-link" target="_blank">管理耗材库 →</a>
+            </div>
+            <div class="slots-list">
+              {#each selectedInstance.slots as slot, i}
+                {@const chosen = slotFilaments[i]}
+                <div class="slot-row">
+                  <!-- 槽位序号 + 推荐色 -->
+                  <div class="slot-left">
+                    <span class="slot-index">#{i + 1}</span>
+                    <span class="slot-rec-swatch" style="background:{slot.color}" title="推荐色 {slot.color}"></span>
+                    <div class="slot-rec-info">
+                      <span class="slot-rec-material">{slot.material}</span>
+                      <span class="slot-rec-grams">{slot.grams}g</span>
+                    </div>
+                  </div>
+
+                  <!-- 箭头 + 已选耗材 or 选择按钮 -->
+                  <div class="slot-right">
+                    {#if chosen}
+                      <button
+                        class="slot-chosen"
+                        onclick={() => { openSlot = openSlot === i ? -1 : i; loadFilaments(); }}
+                      >
+                        <span class="slot-chosen-swatch" style="background:{chosen.color}"></span>
+                        <span class="slot-chosen-label">{chosen.material}{chosen.nickname ? ` · ${chosen.nickname}` : ''}</span>
+                        <span class="slot-chosen-edit">✏️</span>
+                      </button>
+                    {:else}
+                      <button
+                        class="slot-pick-btn"
+                        onclick={() => { openSlot = openSlot === i ? -1 : i; loadFilaments(); }}
+                      >
+                        {openSlot === i ? '▲ 收起' : '选择耗材 ▼'}
+                      </button>
+                    {/if}
+                  </div>
+                </div>
+
+                <!-- 展开的耗材选择器 -->
+                {#if openSlot === i}
+                  <div class="slot-picker">
+                    {#if loadingFilaments}
+                      <p class="slot-picker-empty">⏳ 加载中…</p>
+                    {:else if filaments.length === 0}
+                      <p class="slot-picker-empty">
+                        耗材库为空，<a href="/filaments" target="_blank" class="slot-picker-link">去添加耗材</a>
+                      </p>
+                    {:else}
+                      <div class="slot-picker-grid">
+                        {#each filaments as f (f.id)}
+                          <button
+                            class="picker-item {chosen?.id === f.id ? 'picked' : ''}"
+                            onclick={() => {
+                              const arr = [...slotFilaments];
+                              arr[i] = chosen?.id === f.id ? null : f;
+                              slotFilaments = arr;
+                              openSlot = -1;
+                            }}
+                          >
+                            <span class="picker-swatch" style="background:{f.color}"></span>
+                            <span class="picker-material">{f.material}</span>
+                            {#if f.nickname}
+                              <span class="picker-nickname">{f.nickname}</span>
+                            {/if}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               {/each}
-              <!-- 添加颜色 -->
-              <label class="color-add-btn" title="添加颜色">
-                <span>＋</span>
-                <input
-                  type="color"
-                  value="#ffffff"
-                  onchange={(e) => {
-                    customColors = [...customColors, (e.target as HTMLInputElement).value];
-                    (e.target as HTMLInputElement).value = '#ffffff';
-                  }}
-                  class="color-native-input"
-                />
-              </label>
             </div>
           </div>
         {/if}
@@ -666,7 +740,8 @@
   .energy-unit { font-size: 0.75rem; font-weight: 700; margin-left: 1px; }
   .energy-sub { font-size: 0.6rem; color: #64748b; margin-top: 3px; }
 
-  .admin-btn {
+  .header-btns { display: flex; gap: 8px; flex-shrink: 0; }
+  .icon-btn {
     width: 40px; height: 40px;
     border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.12);
@@ -674,10 +749,12 @@
     font-size: 1.2rem;
     cursor: pointer;
     transition: background 0.2s, transform 0.1s;
-    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    text-decoration: none;
   }
-  .admin-btn:hover { background: rgba(255,255,255,0.12); transform: scale(1.05); }
-  .admin-btn:active { transform: scale(0.95); }
+  .icon-btn:hover { background: rgba(255,255,255,0.12); transform: scale(1.05); }
+  .icon-btn:active { transform: scale(0.95); }
+  .admin-btn { font-size: 1.2rem; }
 
   /* ── Main ── */
   .main {
@@ -914,99 +991,90 @@
   }
   .swatch-lg { width: 18px; height: 18px; }
 
-  /* ── 颜色编辑器 ── */
-  .color-editor {
+  /* ── 颜色槽位 ── */
+  .slots-section {
     margin-top: 14px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 14px;
-    padding: 12px 14px;
+    border-radius: 16px;
+    overflow: hidden;
   }
-  .color-editor-label {
-    font-family: 'Nunito', sans-serif;
-    font-weight: 800;
-    font-size: 0.82rem;
-    color: #94a3b8;
-    margin: 0 0 10px;
+  .slots-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
   }
-  .color-editor-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
+  .slots-label {
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.82rem;
+    color: #94a3b8; margin: 0;
   }
-  /* 每个色块 = label 包裹 hidden color input */
-  .color-swatch-btn {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
+  .slots-manage-link {
+    font-size: 0.72rem; color: #a78bfa; text-decoration: none; font-weight: 700;
+    transition: color 0.15s;
   }
-  .color-swatch-preview {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 3px solid rgba(255,255,255,0.2);
-    display: block;
-    transition: border-color 0.2s, transform 0.15s;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  .slots-manage-link:hover { color: #c4b5fd; }
+  .slots-list { padding: 6px 0; }
+
+  .slot-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
   }
-  .color-swatch-btn:hover .color-swatch-preview {
-    border-color: rgba(255,255,255,0.6);
-    transform: scale(1.1);
+  .slot-row:last-of-type { border-bottom: none; }
+  .slot-left { display: flex; align-items: center; gap: 8px; }
+  .slot-index { font-size: 0.7rem; color: #475569; font-weight: 800; width: 20px; text-align: center; }
+  .slot-rec-swatch {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.15); flex-shrink: 0;
   }
-  .color-native-input {
-    position: absolute;
-    width: 0; height: 0;
-    opacity: 0;
-    pointer-events: none;
+  .slot-rec-info { display: flex; flex-direction: column; gap: 1px; }
+  .slot-rec-material { font-size: 0.72rem; color: #94a3b8; font-weight: 700; }
+  .slot-rec-grams { font-size: 0.65rem; color: #475569; }
+
+  .slot-right { flex-shrink: 0; }
+  .slot-pick-btn {
+    padding: 5px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 800;
+    border: 1.5px solid rgba(167,139,250,0.4); background: rgba(167,139,250,0.1);
+    color: #c4b5fd; cursor: pointer; font-family: 'Nunito', sans-serif;
+    transition: all 0.15s; white-space: nowrap;
   }
-  .color-swatch-btn:focus-within .color-swatch-preview {
-    border-color: #a78bfa;
-    outline: 2px solid #a78bfa;
-    outline-offset: 2px;
+  .slot-pick-btn:hover { background: rgba(167,139,250,0.2); }
+  .slot-chosen {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 8px;
+    border: 1.5px solid rgba(34,197,94,0.4); background: rgba(34,197,94,0.08);
+    cursor: pointer; font-family: 'Nunito', sans-serif;
+    transition: all 0.15s;
   }
-  /* 悬停时显示删除按钮 */
-  .color-remove-btn {
-    position: absolute;
-    top: -5px; right: -5px;
-    width: 16px; height: 16px;
-    border-radius: 50%;
-    background: #ef4444;
-    color: white;
-    font-size: 0.55rem;
-    font-weight: 900;
-    border: none;
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    padding: 0;
-    z-index: 1;
+  .slot-chosen:hover { background: rgba(34,197,94,0.14); }
+  .slot-chosen-swatch { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0; }
+  .slot-chosen-label { font-size: 0.75rem; color: #86efac; font-weight: 700; max-width: 120px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .slot-chosen-edit { font-size: 0.7rem; opacity: 0.6; }
+
+  /* 展开的耗材选择器 */
+  .slot-picker {
+    margin: 0 10px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 10px;
   }
-  .color-swatch-btn:hover .color-remove-btn { display: flex; }
-  /* 添加颜色按钮 */
-  .color-add-btn {
-    width: 36px; height: 36px;
-    border-radius: 50%;
-    border: 2px dashed rgba(167,139,250,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: #a78bfa;
-    font-size: 1.1rem;
-    font-weight: 700;
-    transition: border-color 0.2s, background 0.2s, transform 0.15s;
-    position: relative;
+  .slot-picker-empty { font-size: 0.82rem; color: #475569; margin: 0; text-align: center; padding: 4px; }
+  .slot-picker-link { color: #a78bfa; text-decoration: none; font-weight: 700; }
+  .slot-picker-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .picker-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 8px;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    cursor: pointer; font-family: 'Nunito', sans-serif;
+    transition: all 0.15s;
   }
-  .color-add-btn:hover {
-    border-color: #a78bfa;
-    background: rgba(167,139,250,0.1);
-    transform: scale(1.1);
-  }
+  .picker-item:hover { border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.08); }
+  .picker-item.picked { border-color: #a78bfa; background: rgba(167,139,250,0.15); }
+  .picker-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.2); flex-shrink: 0; }
+  .picker-material { font-size: 0.75rem; color: #c4b5fd; font-weight: 800; }
+  .picker-nickname { font-size: 0.72rem; color: #64748b; max-width: 80px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
   /* ── 手动克数 ── */
   .manual-row {
