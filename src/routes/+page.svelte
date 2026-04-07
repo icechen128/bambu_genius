@@ -65,8 +65,8 @@
     }
   }
 
-  // 管理员面板
-  let showAdmin = $state(false);
+  // 管理员面板（已登录则直接打开）
+  let showAdmin = $state(data.isAdmin);
   let adminPassword = $state('');
   let loginError = $state('');
   let loggingIn = $state(false);
