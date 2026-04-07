@@ -69,6 +69,9 @@ interface MakerWorldApiResponse {
     name: string;
     avatar: string;
   };
+  designExtension?: {
+    design_pictures?: Array<{ url: string; isRealLifePhoto: number }>;
+  };
 }
 
 /**
@@ -154,9 +157,15 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
     instances.find(i => i.id === data.defaultInstanceId) ?? instances[0] ?? null;
 
   return {
+    // 优先取 design_pictures 里第一张非实拍图，兜底用 coverUrl
     model_id: String(data.id),
     model_name: data.title ?? null,
-    thumbnail_url: data.coverUrl ?? null,
+    thumbnail_url: (
+      data.designExtension?.design_pictures?.find(p => p.isRealLifePhoto === 0)?.url
+      ?? data.designExtension?.design_pictures?.[0]?.url
+      ?? data.coverUrl
+      ?? null
+    ),
     designer_name: data.designCreator?.name ?? null,
     designer_avatar_url: data.designCreator?.avatar ?? null,
     // 默认用 defaultInstance 的值；前端选择后会覆盖
