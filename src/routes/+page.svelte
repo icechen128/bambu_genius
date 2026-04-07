@@ -807,11 +807,13 @@
     background: rgba(15,12,46,0.85);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(255,255,255,0.08);
+    /* 顶部安全区（刘海屏）*/
+    padding-top: env(safe-area-inset-top);
   }
   .topbar-inner {
     max-width: 860px;
     margin: 0 auto;
-    padding: 12px 16px;
+    padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
     display: flex;
     align-items: center;
     gap: 16px;
@@ -876,7 +878,8 @@
   .main {
     max-width: 860px;
     margin: 0 auto;
-    padding: 20px 16px 60px;
+    /* 底部安全区（Home 指示条）*/
+    padding: 20px max(16px, env(safe-area-inset-right)) max(60px, calc(env(safe-area-inset-bottom) + 40px)) max(16px, env(safe-area-inset-left));
     position: relative;
     z-index: 1;
     display: flex;
@@ -1375,7 +1378,14 @@
       border-radius: 24px;
     }
   }
-  .detail-inner { padding: 20px; position: relative; }
+  /* 手机底部弹出：底部需要 Home 指示条安全区 */
+  .detail-inner {
+    padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+    position: relative;
+  }
+  @media (min-width: 600px) {
+    .detail-inner { padding: 20px; }
+  }
   .detail-close {
     position: absolute; top: 16px; right: 16px;
     background: rgba(255,255,255,0.1); border: none;
@@ -1500,7 +1510,14 @@
       border-radius: 24px 0 0 24px;
     }
   }
-  .admin-inner { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  /* 手机：底部抽屉需要 Home 指示条安全区；桌面：右侧面板需要顶部安全区 */
+  .admin-inner {
+    padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  @media (min-width: 768px) {
+    .admin-inner { padding: max(20px, env(safe-area-inset-top)) 20px 20px; }
+  }
   .admin-header { display: flex; justify-content: space-between; align-items: center; }
   .admin-title {
     font-family: 'Nunito', sans-serif;
