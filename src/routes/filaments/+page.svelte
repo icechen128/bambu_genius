@@ -235,10 +235,11 @@
     background: rgba(15,12,46,0.85);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding-top: env(safe-area-inset-top);
   }
   .topbar-inner {
     max-width: 640px; margin: 0 auto;
-    padding: 12px 16px;
+    padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
     display: flex; align-items: center; gap: 14px;
   }
   .back-btn {
@@ -258,7 +259,7 @@
 
   .main {
     max-width: 640px; margin: 0 auto;
-    padding: 20px 16px 60px;
+    padding: 20px max(16px, env(safe-area-inset-right)) max(60px, calc(env(safe-area-inset-bottom) + 40px)) max(16px, env(safe-area-inset-left));
     position: relative; z-index: 1;
     display: flex; flex-direction: column; gap: 16px;
   }
