@@ -4,11 +4,21 @@
 
   let { data }: { data: PageData } = $props();
 
+  interface ParsedInstance {
+    id: number;
+    title: string;
+    filament_grams: number;
+    print_time_minutes: number;
+    colors: string[];
+  }
+
   // 提交打印
   let url = $state('');
   let parsing = $state(false);
   let parsed = $state<Record<string, unknown> | null>(null);
   let parseError = $state('');
+  // 当有多个配置时展示选择步骤；选定后填入 selectedInstance
+  let selectedInstance = $state<ParsedInstance | null>(null);
   let manualGrams = $state('');
   let submitting = $state(false);
   let submitError = $state('');
@@ -44,6 +54,13 @@
       } else {
         parsed = body;
         manualGrams = '';
+        // 若只有一个配置，直接选中；多个时等用户选择
+        const instances = body.instances as ParsedInstance[] | null;
+        if (instances && instances.length === 1) {
+          selectedInstance = instances[0];
+        } else {
+          selectedInstance = null;
+        }
       }
     } catch {
       parseError = '网络错误，请稍后重试';
@@ -55,17 +72,30 @@
   async function handleSubmit() {
     submitting = true;
     submitError = '';
-    const grams = parsed?.filament_grams ?? parseFloat(manualGrams);
+    const inst = selectedInstance;
+    const grams = inst?.filament_grams ?? parseFloat(manualGrams);
     if (!grams || isNaN(Number(grams))) {
       submitError = '请填写耗材克数';
       submitting = false;
       return;
     }
+    // 用选中配置的颜色和时长覆盖默认值
+    const payload = {
+      ...parsed,
+      makerworld_url: url,
+      filament_grams: grams,
+      colors: inst?.colors ?? parsed?.colors,
+      print_time_minutes: inst?.print_time_minutes ?? parsed?.print_time_minutes,
+      instance_id: inst?.id ?? parsed?.instance_id,
+      instance_title: inst?.title ?? parsed?.instance_title,
+      // 不要把 instances 数组也提交给服务端
+      instances: undefined
+    };
     try {
       const res = await fetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...parsed, makerworld_url: url, filament_grams: grams })
+        body: JSON.stringify(payload)
       });
       const body = await res.json();
       if (!res.ok) {
@@ -73,6 +103,7 @@
       } else {
         url = '';
         parsed = null;
+        selectedInstance = null;
         manualGrams = '';
         window.location.reload();
       }
@@ -202,6 +233,7 @@
       {/if}
 
       {#if parsed}
+        <!-- 模型基本信息 -->
         <div class="border border-gray-200 rounded-lg p-3 flex gap-3">
           {#if parsed.thumbnail_url}
             <img src={String(parsed.thumbnail_url)} alt="model" class="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
@@ -211,38 +243,98 @@
             {#if parsed.designer_name}
               <p class="text-xs text-gray-500">设计师：{parsed.designer_name}</p>
             {/if}
-            <div class="flex items-center gap-2 flex-wrap">
-              {#if parsed.filament_grams}
-                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                  {parsed.filament_grams}g
-                </span>
-              {:else}
-                <div class="flex items-center gap-1">
-                  <span class="text-xs text-red-500">克数未知，请填写：</span>
-                  <input
-                    type="number"
-                    bind:value={manualGrams}
-                    placeholder="如 50"
-                    class="w-20 border border-red-300 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-300"
-                  />
-                  <span class="text-xs text-gray-500">g</span>
-                </div>
-              {/if}
-              {#if parsed.print_time_minutes}
-                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                  约 {Math.round(Number(parsed.print_time_minutes) / 60)}h
-                </span>
-              {/if}
-            </div>
-            {#if parsed.colors && Array.isArray(parsed.colors) && (parsed.colors as string[]).length > 0}
+            {#if parsed.tags && Array.isArray(parsed.tags) && (parsed.tags as string[]).length > 0}
               <div class="flex gap-1 flex-wrap">
-                {#each parsed.colors as color}
-                  <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{color}</span>
+                {#each (parsed.tags as string[]).slice(0, 4) as tag}
+                  <span class="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">{tag}</span>
                 {/each}
               </div>
             {/if}
           </div>
         </div>
+
+        <!-- 打印配置选择（多个时展示） -->
+        {#if parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1}
+          <div class="space-y-2">
+            <p class="text-xs text-gray-500 font-medium">
+              选择打印配置（共 {(parsed.instances as ParsedInstance[]).length} 个）
+            </p>
+            <div class="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
+              {#each parsed.instances as inst (inst.id)}
+                <button
+                  onclick={() => { selectedInstance = inst; manualGrams = ''; }}
+                  class="text-left border rounded-lg p-2.5 transition-colors {selectedInstance?.id === inst.id
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
+                >
+                  <p class="text-sm font-medium text-gray-800 leading-snug">{inst.title}</p>
+                  <div class="flex items-center gap-2 mt-1 flex-wrap">
+                    {#if inst.filament_grams}
+                      <span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                        {inst.filament_grams}g
+                      </span>
+                    {/if}
+                    {#if inst.print_time_minutes}
+                      <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
+                        {inst.print_time_minutes >= 60
+                          ? `约 ${Math.floor(inst.print_time_minutes / 60)}h${inst.print_time_minutes % 60 > 0 ? ` ${inst.print_time_minutes % 60}m` : ''}`
+                          : `${inst.print_time_minutes}m`}
+                      </span>
+                    {/if}
+                    {#each inst.colors as color}
+                      <span
+                        class="inline-block w-4 h-4 rounded-full border border-white shadow-sm"
+                        style="background:{color}"
+                        title={color}
+                      ></span>
+                    {/each}
+                  </div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <!-- 选中配置后展示详情 -->
+        {#if selectedInstance}
+          <div class="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
+            <div class="flex-1 space-y-1">
+              <p class="text-xs text-gray-500">已选配置</p>
+              <p class="text-sm font-medium text-gray-800">{selectedInstance.title}</p>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                  {selectedInstance.filament_grams}g
+                </span>
+                {#if selectedInstance.print_time_minutes}
+                  <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                    {selectedInstance.print_time_minutes >= 60
+                      ? `约 ${Math.floor(selectedInstance.print_time_minutes / 60)}h${selectedInstance.print_time_minutes % 60 > 0 ? ` ${selectedInstance.print_time_minutes % 60}m` : ''}`
+                      : `${selectedInstance.print_time_minutes}m`}
+                  </span>
+                {/if}
+                {#each selectedInstance.colors as color}
+                  <span
+                    class="inline-block w-4 h-4 rounded-full border border-white shadow-sm"
+                    style="background:{color}"
+                    title={color}
+                  ></span>
+                {/each}
+              </div>
+            </div>
+          </div>
+        {:else if !(parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1)}
+          <!-- 无法解析克数时手动填写 -->
+          <div class="flex items-center gap-1">
+            <span class="text-xs text-red-500">克数未知，请填写：</span>
+            <input
+              type="number"
+              bind:value={manualGrams}
+              placeholder="如 50"
+              class="w-20 border border-red-300 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-300"
+            />
+            <span class="text-xs text-gray-500">g</span>
+          </div>
+        {/if}
 
         {#if submitError}
           <p class="text-red-500 text-sm">{submitError}</p>
@@ -250,10 +342,16 @@
 
         <button
           onclick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || (parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1 && !selectedInstance)}
           class="w-full py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 disabled:opacity-50 transition-colors"
         >
-          {submitting ? '提交中…' : '确认打印，扣除额度'}
+          {#if submitting}
+            提交中…
+          {:else if parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1 && !selectedInstance}
+            请先选择打印配置
+          {:else}
+            确认打印，扣除额度
+          {/if}
         </button>
       {/if}
     </section>

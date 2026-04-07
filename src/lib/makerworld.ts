@@ -1,14 +1,31 @@
+/** 单个打印配置（一个模型可能有多个） */
+export interface ParsedInstance {
+  id: number;
+  title: string;
+  filament_grams: number;
+  print_time_minutes: number;
+  colors: string[];
+}
+
 export interface ParsedModel {
   model_id: string | null;
   model_name: string | null;
   thumbnail_url: string | null;
   designer_name: string | null;
   designer_avatar_url: string | null;
+  /** 由前端根据所选配置填入 */
   filament_grams: number | null;
   colors: string[] | null;
   print_time_minutes: number | null;
   tags: string[] | null;
   raw_meta: Record<string, unknown> | null;
+  /** 所有可选打印配置；单配置时也包含，方便前端统一处理 */
+  instances: ParsedInstance[] | null;
+  /** 默认选中的配置 ID */
+  default_instance_id: number | null;
+  /** 当前选中的配置 ID（前端写入后提交） */
+  instance_id: number | null;
+  instance_title: string | null;
 }
 
 /** 从 MakerWorld URL 提取模型 ID */
@@ -83,7 +100,13 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
     raw_meta: null
   };
 
-  if (!modelId) return base;
+  if (!modelId) return {
+    ...base,
+    instances: null,
+    default_instance_id: null,
+    instance_id: null,
+    instance_title: null
+  };
 
   let data: MakerWorldApiResponse;
   try {
@@ -117,18 +140,18 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
     return base;
   }
 
-  // 优先使用 defaultInstanceId 对应的实例，兜底取第一个
-  const defaultInstance =
-    data.instances?.find(i => i.id === data.defaultInstanceId)
-    ?? data.instances?.[0]
-    ?? null;
+  // 将所有打印配置整理为统一结构
+  const instances: ParsedInstance[] = (data.instances ?? []).map(inst => ({
+    id: inst.id,
+    title: inst.title || `配置 ${inst.id}`,
+    filament_grams: Number(inst.weight) || 0,
+    print_time_minutes: inst.prediction ? Math.round(inst.prediction / 60) : 0,
+    colors: inst.instanceFilaments?.map(f => f.color).filter(Boolean) ?? []
+  }));
 
-  const filament_grams = defaultInstance?.weight ? Number(defaultInstance.weight) : null;
-  const print_time_minutes = defaultInstance?.prediction
-    ? Math.round(defaultInstance.prediction / 60)
-    : null;
-  const colors =
-    defaultInstance?.instanceFilaments?.map(f => f.color).filter(Boolean) ?? null;
+  // 默认选中 defaultInstanceId，兜底取第一个
+  const defaultInst =
+    instances.find(i => i.id === data.defaultInstanceId) ?? instances[0] ?? null;
 
   return {
     model_id: String(data.id),
@@ -136,10 +159,15 @@ export async function parseMakerWorldUrl(url: string): Promise<ParsedModel> {
     thumbnail_url: data.coverUrl ?? null,
     designer_name: data.designCreator?.name ?? null,
     designer_avatar_url: data.designCreator?.avatar ?? null,
-    filament_grams,
-    colors: colors && colors.length > 0 ? colors : null,
-    print_time_minutes,
+    // 默认用 defaultInstance 的值；前端选择后会覆盖
+    filament_grams: defaultInst?.filament_grams ?? null,
+    colors: defaultInst?.colors?.length ? defaultInst.colors : null,
+    print_time_minutes: defaultInst?.print_time_minutes ?? null,
     tags: data.tags && data.tags.length > 0 ? data.tags : null,
-    raw_meta: data as unknown as Record<string, unknown>
+    raw_meta: data as unknown as Record<string, unknown>,
+    instances: instances.length > 0 ? instances : null,
+    default_instance_id: data.defaultInstanceId ?? null,
+    instance_id: defaultInst?.id ?? null,
+    instance_title: defaultInst?.title ?? null
   };
 }

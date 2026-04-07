@@ -29,7 +29,9 @@ export const POST: RequestHandler = async ({ request }) => {
     print_time_minutes,
     tags,
     raw_meta,
-    note
+    note,
+    instance_id,
+    instance_title
   } = body;
 
   if (!makerworld_url) {
@@ -48,8 +50,9 @@ export const POST: RequestHandler = async ({ request }) => {
     await query(
       `INSERT INTO print_records
         (makerworld_url, model_name, model_id, thumbnail_url, designer_name,
-         designer_avatar_url, filament_grams, colors, print_time_minutes, tags, raw_meta, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         designer_avatar_url, filament_grams, colors, print_time_minutes, tags,
+         raw_meta, note, instance_id, instance_title)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         makerworld_url,
         model_name ?? null,
@@ -62,7 +65,9 @@ export const POST: RequestHandler = async ({ request }) => {
         print_time_minutes ?? null,
         tags ?? null,
         raw_meta ? JSON.stringify(raw_meta) : null,
-        note ?? null
+        note ?? null,
+        instance_id != null ? String(instance_id) : null,
+        instance_title ?? null
       ]
     );
   } catch (err) {

@@ -15,8 +15,14 @@ CREATE TABLE IF NOT EXISTS print_records (
   tags                TEXT[],
   raw_meta            JSONB,
   note                TEXT,
+  instance_id         TEXT,
+  instance_title      TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 为已存在的表补充字段（幂等）
+ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_id TEXT;
+ALTER TABLE print_records ADD COLUMN IF NOT EXISTS instance_title TEXT;
 
 CREATE TABLE IF NOT EXISTS quota_records (
   id         SERIAL PRIMARY KEY,
