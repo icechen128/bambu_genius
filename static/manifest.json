@@ -1,0 +1,17 @@
+{
+  "name": "Bambu Genius",
+  "short_name": "Bambu",
+  "description": "3D 打印耗材配额追踪",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0c2e",
+  "theme_color": "#0f0c2e",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
