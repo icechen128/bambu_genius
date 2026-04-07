@@ -17,7 +17,6 @@
   let parsing = $state(false);
   let parsed = $state<Record<string, unknown> | null>(null);
   let parseError = $state('');
-  // 当有多个配置时展示选择步骤；选定后填入 selectedInstance
   let selectedInstance = $state<ParsedInstance | null>(null);
   let manualGrams = $state('');
   let submitting = $state(false);
@@ -38,10 +37,26 @@
   let hasMore = $state(data.hasMore);
   let loadingMore = $state(false);
 
+  // 能量槽百分比
+  const pct = $derived(
+    data.totalAdded > 0
+      ? Math.max(0, Math.min(100, (data.remaining / data.totalAdded) * 100))
+      : 0
+  );
+
+  const energyColor = $derived(
+    pct > 60 ? '#22d3ee' : pct > 25 ? '#facc15' : '#f87171'
+  );
+
+  const instanceColors = [
+    '#f472b6','#fb923c','#a78bfa','#34d399','#60a5fa','#fbbf24','#f87171','#4ade80'
+  ];
+
   async function handleParse() {
     parsing = true;
     parseError = '';
     parsed = null;
+    selectedInstance = null;
     try {
       const res = await fetch('/api/parse', {
         method: 'POST',
@@ -54,12 +69,9 @@
       } else {
         parsed = body;
         manualGrams = '';
-        // 若只有一个配置，直接选中；多个时等用户选择
         const instances = body.instances as ParsedInstance[] | null;
         if (instances && instances.length === 1) {
           selectedInstance = instances[0];
-        } else {
-          selectedInstance = null;
         }
       }
     } catch {
@@ -79,7 +91,6 @@
       submitting = false;
       return;
     }
-    // 用选中配置的颜色和时长覆盖默认值
     const payload = {
       ...parsed,
       makerworld_url: url,
@@ -88,7 +99,6 @@
       print_time_minutes: inst?.print_time_minutes ?? parsed?.print_time_minutes,
       instance_id: inst?.id ?? parsed?.instance_id,
       instance_title: inst?.title ?? parsed?.instance_title,
-      // 不要把 instances 数组也提交给服务端
       instances: undefined
     };
     try {
@@ -185,202 +195,243 @@
 
   function formatDate(dateStr: string) {
     return new Date(dateStr).toLocaleString('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
+      month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit'
     });
   }
+
+  function fmtTime(mins: number) {
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    return `${mins}m`;
+  }
 </script>
 
-<div class="min-h-screen bg-gray-50">
-  <!-- 顶部状态栏 -->
-  <header class="bg-white shadow-sm sticky top-0 z-10">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <span class="text-2xl font-bold text-blue-600">{data.remaining.toFixed(1)}g</span>
-        <span class="text-sm text-gray-500">剩余额度</span>
+<svelte:head>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Nunito+Sans:wght@400;600&display=swap" rel="stylesheet" />
+</svelte:head>
+
+<div class="page-root">
+  <!-- 背景星点装饰 -->
+  <div class="stars" aria-hidden="true">
+    {#each [0,1,2,3,4,5,6,7,8,9,10,11] as i}
+      <span class="star" style="--d:{i*37%360}deg; --s:{0.5+i%3*0.4}; --x:{5+i*8}%; --y:{5+i*7}%; --dur:{2+i%4}s"></span>
+    {/each}
+  </div>
+
+  <!-- ═══ 顶部 Header ═══ -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <!-- Logo -->
+      <div class="logo">
+        <span class="logo-icon">🖨️</span>
+        <span class="logo-text">Bambu Genius</span>
       </div>
-      <button
-        onclick={() => showAdmin = !showAdmin}
-        class="text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
-      >
-        {data.isAdmin ? '管理面板' : '管理员登录'}
+
+      <!-- 能量槽 -->
+      <div class="energy-block">
+        <div class="energy-label">⚡ 耗材能量</div>
+        <div class="energy-row">
+          <div class="energy-bar-wrap">
+            <div class="energy-bar-track">
+              <div
+                class="energy-bar-fill"
+                style="width:{pct}%; background:{energyColor}; box-shadow: 0 0 12px {energyColor}88"
+              ></div>
+            </div>
+          </div>
+          <div class="energy-num" style="color:{energyColor}">
+            {data.remaining.toFixed(0)}<span class="energy-unit">g</span>
+          </div>
+        </div>
+        {#if data.totalAdded > 0}
+          <div class="energy-sub">{data.totalPrinted.toFixed(0)}g 已使用 / {data.totalAdded.toFixed(0)}g 总额度</div>
+        {/if}
+      </div>
+
+      <!-- 管理按钮 -->
+      <button class="admin-btn" onclick={() => showAdmin = !showAdmin}>
+        {data.isAdmin ? '⚙️' : '🔐'}
       </button>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
-    <!-- 提交打印区 -->
-    <section class="bg-white rounded-xl shadow-sm p-4 space-y-4">
-      <h2 class="font-semibold text-gray-700">提交打印</h2>
-      <div class="flex gap-2">
+  <main class="main">
+
+    <!-- ═══ 提交打印卡 ═══ -->
+    <section class="card card-print">
+      <h2 class="card-title">🚀 今天想打什么？</h2>
+
+      <div class="url-row">
         <input
           type="url"
           bind:value={url}
           placeholder="粘贴 MakerWorld 链接…"
-          class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+          class="url-input"
+          onkeydown={(e) => e.key === 'Enter' && handleParse()}
         />
         <button
           onclick={handleParse}
           disabled={parsing || !url}
-          class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50 transition-colors"
+          class="btn-parse"
         >
-          {parsing ? '解析中…' : '解析'}
+          {#if parsing}
+            <span class="spin">⚙️</span> 解析中…
+          {:else}
+            🔍 解析
+          {/if}
         </button>
       </div>
 
       {#if parseError}
-        <p class="text-red-500 text-sm">{parseError}</p>
+        <div class="error-box">😅 {parseError}</div>
       {/if}
 
       {#if parsed}
-        <!-- 模型基本信息 -->
-        <div class="border border-gray-200 rounded-lg p-3 flex gap-3">
+        <!-- 模型信息卡 -->
+        <div class="model-card">
           {#if parsed.thumbnail_url}
-            <img src={String(parsed.thumbnail_url)} alt="model" class="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
+            <img src={String(parsed.thumbnail_url)} alt="model" class="model-thumb" />
+          {:else}
+            <div class="model-thumb-placeholder">🧩</div>
           {/if}
-          <div class="flex-1 min-w-0 space-y-1">
-            <p class="font-medium text-sm truncate">{parsed.model_name ?? '未知模型'}</p>
+          <div class="model-info">
+            <p class="model-name">{parsed.model_name ?? '未知模型'}</p>
             {#if parsed.designer_name}
-              <p class="text-xs text-gray-500">设计师：{parsed.designer_name}</p>
+              <p class="model-designer">✏️ {parsed.designer_name}</p>
             {/if}
-            {#if parsed.tags && Array.isArray(parsed.tags) && (parsed.tags as string[]).length > 0}
-              <div class="flex gap-1 flex-wrap">
+            {#if parsed.tags && Array.isArray(parsed.tags)}
+              <div class="tag-row">
                 {#each (parsed.tags as string[]).slice(0, 4) as tag}
-                  <span class="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">{tag}</span>
+                  <span class="tag">{tag}</span>
                 {/each}
               </div>
             {/if}
           </div>
         </div>
 
-        <!-- 打印配置选择（多个时展示） -->
+        <!-- 多配置选择 -->
         {#if parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1}
-          <div class="space-y-2">
-            <p class="text-xs text-gray-500 font-medium">
-              选择打印配置（共 {(parsed.instances as ParsedInstance[]).length} 个）
-            </p>
-            <div class="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
-              {#each parsed.instances as inst (inst.id)}
+          <div class="instances-section">
+            <p class="instances-label">🎛️ 选择打印配置（{(parsed.instances as ParsedInstance[]).length} 种）</p>
+            <div class="instances-grid">
+              {#each parsed.instances as inst, i (inst.id)}
+                {@const accent = instanceColors[i % instanceColors.length]}
                 <button
+                  class="instance-card {selectedInstance?.id === inst.id ? 'selected' : ''}"
+                  style="--accent:{accent}"
                   onclick={() => { selectedInstance = inst; manualGrams = ''; }}
-                  class="text-left border rounded-lg p-2.5 transition-colors {selectedInstance?.id === inst.id
-                    ? 'border-blue-400 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}"
                 >
-                  <p class="text-sm font-medium text-gray-800 leading-snug">{inst.title}</p>
-                  <div class="flex items-center gap-2 mt-1 flex-wrap">
+                  <span class="instance-check">{selectedInstance?.id === inst.id ? '✅' : '⬜'}</span>
+                  <p class="instance-title">{inst.title}</p>
+                  <div class="instance-meta">
                     {#if inst.filament_grams}
-                      <span class="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
-                        {inst.filament_grams}g
-                      </span>
+                      <span class="instance-grams">🧵 {inst.filament_grams}g</span>
                     {/if}
                     {#if inst.print_time_minutes}
-                      <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">
-                        {inst.print_time_minutes >= 60
-                          ? `约 ${Math.floor(inst.print_time_minutes / 60)}h${inst.print_time_minutes % 60 > 0 ? ` ${inst.print_time_minutes % 60}m` : ''}`
-                          : `${inst.print_time_minutes}m`}
-                      </span>
+                      <span class="instance-time">⏱ {fmtTime(inst.print_time_minutes)}</span>
                     {/if}
-                    {#each inst.colors as color}
-                      <span
-                        class="inline-block w-4 h-4 rounded-full border border-white shadow-sm"
-                        style="background:{color}"
-                        title={color}
-                      ></span>
-                    {/each}
                   </div>
+                  {#if inst.colors?.length}
+                    <div class="swatch-row">
+                      {#each inst.colors as c}
+                        <span class="swatch" style="background:{c}" title={c}></span>
+                      {/each}
+                    </div>
+                  {/if}
                 </button>
               {/each}
             </div>
           </div>
         {/if}
 
-        <!-- 选中配置后展示详情 -->
+        <!-- 已选配置详情 -->
         {#if selectedInstance}
-          <div class="bg-gray-50 rounded-lg p-3 flex items-center gap-3">
-            <div class="flex-1 space-y-1">
-              <p class="text-xs text-gray-500">已选配置</p>
-              <p class="text-sm font-medium text-gray-800">{selectedInstance.title}</p>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                  {selectedInstance.filament_grams}g
-                </span>
-                {#if selectedInstance.print_time_minutes}
-                  <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                    {selectedInstance.print_time_minutes >= 60
-                      ? `约 ${Math.floor(selectedInstance.print_time_minutes / 60)}h${selectedInstance.print_time_minutes % 60 > 0 ? ` ${selectedInstance.print_time_minutes % 60}m` : ''}`
-                      : `${selectedInstance.print_time_minutes}m`}
-                  </span>
-                {/if}
-                {#each selectedInstance.colors as color}
-                  <span
-                    class="inline-block w-4 h-4 rounded-full border border-white shadow-sm"
-                    style="background:{color}"
-                    title={color}
-                  ></span>
-                {/each}
-              </div>
+          <div class="selected-banner">
+            <div class="selected-banner-left">
+              <span class="selected-label">🎯 已选配置</span>
+              <span class="selected-title">{selectedInstance.title}</span>
+            </div>
+            <div class="selected-stats">
+              <span class="stat-pill stat-grams">🧵 {selectedInstance.filament_grams}g</span>
+              {#if selectedInstance.print_time_minutes}
+                <span class="stat-pill stat-time">⏱ {fmtTime(selectedInstance.print_time_minutes)}</span>
+              {/if}
+              {#each selectedInstance.colors as c}
+                <span class="swatch swatch-lg" style="background:{c}" title={c}></span>
+              {/each}
             </div>
           </div>
         {:else if !(parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1)}
-          <!-- 无法解析克数时手动填写 -->
-          <div class="flex items-center gap-1">
-            <span class="text-xs text-red-500">克数未知，请填写：</span>
+          <div class="manual-row">
+            <span class="manual-label">🤔 克数未知，手动填写：</span>
             <input
               type="number"
               bind:value={manualGrams}
               placeholder="如 50"
-              class="w-20 border border-red-300 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-300"
+              class="manual-input"
             />
-            <span class="text-xs text-gray-500">g</span>
+            <span class="manual-unit">g</span>
           </div>
         {/if}
 
         {#if submitError}
-          <p class="text-red-500 text-sm">{submitError}</p>
+          <div class="error-box">😅 {submitError}</div>
         {/if}
 
         <button
           onclick={handleSubmit}
           disabled={submitting || (parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1 && !selectedInstance)}
-          class="w-full py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 disabled:opacity-50 transition-colors"
+          class="btn-submit"
         >
           {#if submitting}
-            提交中…
+            <span class="spin">⚙️</span> 提交中…
           {:else if parsed.instances && Array.isArray(parsed.instances) && (parsed.instances as ParsedInstance[]).length > 1 && !selectedInstance}
-            请先选择打印配置
+            👆 请先选择打印配置
           {:else}
-            确认打印，扣除额度
+            🎉 开始打印！扣除额度
           {/if}
         </button>
       {/if}
     </section>
 
-    <!-- 打印历史 -->
-    <section class="space-y-3">
-      <h2 class="font-semibold text-gray-700 px-1">打印历史</h2>
+    <!-- ═══ 打印历史 ═══ -->
+    <section class="history-section">
+      <h2 class="section-title">🏆 打印任务记录</h2>
+
       {#if records.length === 0}
-        <p class="text-center text-gray-400 py-8">还没有打印记录</p>
+        <div class="empty-state">
+          <div class="empty-icon">🌱</div>
+          <p>还没有打印记录，快去选一个模型吧！</p>
+        </div>
       {:else}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="history-grid">
           {#each records as record (record.id)}
-            <div class="bg-white rounded-xl shadow-sm p-3 flex gap-3">
+            <div class="history-card">
               {#if record.thumbnail_url}
-                <img src={record.thumbnail_url} alt="thumb" class="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+                <img src={record.thumbnail_url} alt="thumb" class="history-thumb" />
               {:else}
-                <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 flex items-center justify-center text-gray-300 text-xs">无图</div>
+                <div class="history-thumb-placeholder">🧩</div>
               {/if}
-              <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium truncate">{record.model_name ?? '未知模型'}</p>
-                <p class="text-xs text-gray-500">{parseFloat(record.filament_grams).toFixed(1)}g</p>
-                {#if record.colors && record.colors.length > 0}
-                  <div class="flex gap-1 flex-wrap mt-0.5">
-                    {#each record.colors as color}
-                      <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">{color}</span>
-                    {/each}
-                  </div>
+              <div class="history-body">
+                <p class="history-name">{record.model_name ?? '未知模型'}</p>
+                {#if record.instance_title}
+                  <p class="history-instance">📋 {record.instance_title}</p>
                 {/if}
-                <p class="text-xs text-gray-400 mt-1">{formatDate(record.created_at)}</p>
+                <div class="history-meta">
+                  <span class="history-grams">🧵 {parseFloat(record.filament_grams).toFixed(1)}g</span>
+                  {#if record.colors?.length}
+                    <div class="swatch-row">
+                      {#each record.colors as c}
+                        <span class="swatch" style="background:{c}" title={c}></span>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+                <p class="history-date">🕐 {formatDate(record.created_at)}</p>
               </div>
             </div>
           {/each}
@@ -390,9 +441,9 @@
           <button
             onclick={loadMore}
             disabled={loadingMore}
-            class="w-full py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+            class="btn-loadmore"
           >
-            {loadingMore ? '加载中…' : '加载更多'}
+            {loadingMore ? '⏳ 加载中…' : '📦 加载更多'}
           </button>
         {/if}
       {/if}
@@ -400,106 +451,709 @@
   </main>
 </div>
 
-<!-- 管理员面板：移动端底部抽屉 / 桌面端侧边抽屉 -->
+<!-- ═══ 管理员面板 ═══ -->
 {#if showAdmin}
-  <div
-    class="fixed inset-0 bg-black/30 z-20"
-    onclick={() => showAdmin = false}
-  ></div>
-
-  <aside class="
-    fixed z-30 bg-white shadow-xl overflow-y-auto
-    bottom-0 left-0 right-0 max-h-[80vh] rounded-t-2xl
-    md:bottom-auto md:top-0 md:right-0 md:left-auto md:h-full md:w-80 md:rounded-none md:rounded-l-2xl
-  ">
-    <div class="p-4 space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="font-semibold text-gray-800">管理面板</h2>
-        <button onclick={() => showAdmin = false} class="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+  <div class="overlay" onclick={() => showAdmin = false}></div>
+  <aside class="admin-panel">
+    <div class="admin-inner">
+      <div class="admin-header">
+        <span class="admin-title">{data.isAdmin ? '⚙️ 管理面板' : '🔐 管理员登录'}</span>
+        <button class="admin-close" onclick={() => showAdmin = false}>✕</button>
       </div>
 
       {#if !data.isAdmin}
-        <div class="space-y-3">
+        <div class="login-form">
           <input
             type="password"
             bind:value={adminPassword}
             placeholder="管理员密码"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            class="admin-input"
+            onkeydown={(e) => e.key === 'Enter' && handleLogin()}
           />
           {#if loginError}
-            <p class="text-red-500 text-sm">{loginError}</p>
+            <p class="error-text">😅 {loginError}</p>
           {/if}
-          <button
-            onclick={handleLogin}
-            disabled={loggingIn}
-            class="w-full py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50"
-          >
-            {loggingIn ? '登录中…' : '登录'}
+          <button onclick={handleLogin} disabled={loggingIn} class="btn-admin-action btn-blue">
+            {loggingIn ? '⏳ 登录中…' : '🔓 登录'}
           </button>
         </div>
       {:else}
-        <div class="space-y-3">
-          <div class="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-            <p>总充值：<span class="font-medium">{data.totalAdded.toFixed(1)}g</span></p>
-            <p>已用：<span class="font-medium">{data.totalPrinted.toFixed(1)}g</span></p>
-            <p>剩余：<span class="font-bold text-blue-600">{data.remaining.toFixed(1)}g</span></p>
-          </div>
-
-          <input
-            type="number"
-            bind:value={adminDelta}
-            placeholder="克数（如 100）"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
-          <input
-            type="text"
-            bind:value={adminReason}
-            placeholder="原因（可选）"
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-          />
-
-          {#if quotaError}
-            <p class="text-red-500 text-sm">{quotaError}</p>
-          {/if}
-
-          <div class="flex gap-2">
-            <button
-              onclick={() => handleQuota('add')}
-              class="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600"
-            >
-              + 增加额度
-            </button>
-            <button
-              onclick={() => handleQuota('subtract')}
-              class="flex-1 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600"
-            >
-              - 减少额度
-            </button>
-          </div>
-
-          {#if data.quotaRecords.length > 0}
-            <div class="space-y-1 max-h-48 overflow-y-auto">
-              <p class="text-xs text-gray-500 font-medium">变更记录</p>
-              {#each data.quotaRecords as q (q.id)}
-                <div class="text-xs flex justify-between items-center py-1 border-b border-gray-100">
-                  <span class={Number(q.delta) > 0 ? 'text-green-600' : 'text-orange-600'}>
-                    {Number(q.delta) > 0 ? '+' : ''}{q.delta}g
-                    {#if q.reason}<span class="text-gray-400"> · {q.reason}</span>{/if}
-                  </span>
-                  <span class="text-gray-400">{formatDate(q.created_at)}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <button
-            onclick={handleLogout}
-            class="w-full py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg"
-          >
-            注销登录
-          </button>
+        <div class="admin-stats">
+          <div class="stat-row"><span>💰 总充值</span><strong>{data.totalAdded.toFixed(1)}g</strong></div>
+          <div class="stat-row"><span>🖨️ 已使用</span><strong>{data.totalPrinted.toFixed(1)}g</strong></div>
+          <div class="stat-row highlight"><span>⚡ 剩余</span><strong style="color:#22d3ee">{data.remaining.toFixed(1)}g</strong></div>
         </div>
+
+        <div class="quota-form">
+          <input type="number" bind:value={adminDelta} placeholder="克数（如 100）" class="admin-input" />
+          <input type="text" bind:value={adminReason} placeholder="备注原因（可选）" class="admin-input" />
+          {#if quotaError}<p class="error-text">😅 {quotaError}</p>{/if}
+          <div class="quota-btns">
+            <button onclick={() => handleQuota('add')} class="btn-admin-action btn-green">➕ 增加额度</button>
+            <button onclick={() => handleQuota('subtract')} class="btn-admin-action btn-orange">➖ 减少额度</button>
+          </div>
+        </div>
+
+        {#if data.quotaRecords?.length > 0}
+          <div class="quota-log">
+            <p class="quota-log-title">📒 变更记录</p>
+            {#each data.quotaRecords as q (q.id)}
+              <div class="quota-log-row">
+                <span class={Number(q.delta) > 0 ? 'pos' : 'neg'}>
+                  {Number(q.delta) > 0 ? '+' : ''}{q.delta}g
+                  {#if q.reason}<span class="log-reason"> · {q.reason}</span>{/if}
+                </span>
+                <span class="log-date">{formatDate(q.created_at)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <button onclick={handleLogout} class="btn-logout">🚪 注销登录</button>
       {/if}
     </div>
   </aside>
 {/if}
+
+<style>
+  :global(body) {
+    font-family: 'Nunito Sans', 'Nunito', sans-serif;
+    margin: 0;
+  }
+
+  /* ── 页面背景 ── */
+  .page-root {
+    min-height: 100vh;
+    background: #0f0c2e;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, #1e1060 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #0d2b5e 0%, transparent 50%);
+    color: #e2e8f0;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* ── 星点背景 ── */
+  .stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .star {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: calc(4px * var(--s));
+    height: calc(4px * var(--s));
+    border-radius: 50%;
+    background: white;
+    opacity: 0.5;
+    animation: twinkle var(--dur) ease-in-out infinite alternate;
+  }
+  @keyframes twinkle {
+    from { opacity: 0.15; transform: scale(0.8); }
+    to   { opacity: 0.9;  transform: scale(1.2); }
+  }
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  .spin { display: inline-block; animation: spin-slow 1s linear infinite; }
+
+  /* ── Header ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(15,12,46,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .topbar-inner {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .logo-icon { font-size: 1.6rem; }
+  .logo-text {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.15rem;
+    background: linear-gradient(90deg, #f472b6, #a78bfa, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    white-space: nowrap;
+  }
+
+  .energy-block { flex: 1; min-width: 0; }
+  .energy-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 4px; font-weight: 700; }
+  .energy-row { display: flex; align-items: center; gap: 10px; }
+  .energy-bar-wrap { flex: 1; }
+  .energy-bar-track {
+    height: 10px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .energy-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.8s cubic-bezier(.34,1.56,.64,1), background 0.5s;
+  }
+  .energy-num {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.4rem;
+    line-height: 1;
+    transition: color 0.5s;
+    flex-shrink: 0;
+  }
+  .energy-unit { font-size: 0.75rem; font-weight: 700; margin-left: 1px; }
+  .energy-sub { font-size: 0.6rem; color: #64748b; margin-top: 3px; }
+
+  .admin-btn {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    flex-shrink: 0;
+  }
+  .admin-btn:hover { background: rgba(255,255,255,0.12); transform: scale(1.05); }
+  .admin-btn:active { transform: scale(0.95); }
+
+  /* ── Main ── */
+  .main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── 卡片基础 ── */
+  .card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 24px;
+    padding: 20px;
+    backdrop-filter: blur(8px);
+  }
+  .card-print { border-color: rgba(167,139,250,0.3); }
+
+  .card-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.2rem;
+    margin: 0 0 16px;
+    background: linear-gradient(90deg, #f472b6, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── URL 输入行 ── */
+  .url-row { display: flex; gap: 8px; }
+  .url-input {
+    flex: 1;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(167,139,250,0.3);
+    border-radius: 14px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    color: #e2e8f0;
+    outline: none;
+    font-family: 'Nunito Sans', sans-serif;
+    transition: border-color 0.2s;
+    min-width: 0;
+  }
+  .url-input::placeholder { color: #475569; }
+  .url-input:focus { border-color: #a78bfa; }
+
+  .btn-parse {
+    padding: 10px 18px;
+    background: linear-gradient(135deg, #a78bfa, #60a5fa);
+    border: none;
+    border-radius: 14px;
+    color: white;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 20px rgba(167,139,250,0.4);
+    flex-shrink: 0;
+  }
+  .btn-parse:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(167,139,250,0.5); }
+  .btn-parse:active:not(:disabled) { transform: translateY(0); }
+  .btn-parse:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ── 模型卡 ── */
+  .model-card {
+    display: flex;
+    gap: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 12px;
+    margin-top: 14px;
+  }
+  .model-thumb {
+    width: 80px; height: 80px;
+    object-fit: cover;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+  .model-thumb-placeholder {
+    width: 80px; height: 80px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+  .model-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .model-name {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+    color: #f1f5f9;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+  }
+  .model-designer { font-size: 0.78rem; color: #94a3b8; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag {
+    font-size: 0.7rem;
+    background: rgba(167,139,250,0.2);
+    color: #c4b5fd;
+    border: 1px solid rgba(167,139,250,0.3);
+    padding: 2px 8px;
+    border-radius: 99px;
+  }
+
+  /* ── 配置选择 ── */
+  .instances-section { margin-top: 16px; }
+  .instances-label {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+  .instances-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .instances-grid::-webkit-scrollbar { width: 4px; }
+  .instances-grid::-webkit-scrollbar-track { background: transparent; }
+  .instances-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  .instance-card {
+    background: rgba(255,255,255,0.04);
+    border: 2px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 10px 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .instance-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .instance-card.selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .instance-card.selected::before { opacity: 1; }
+  .instance-card:hover:not(.selected) {
+    border-color: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.07);
+    transform: translateY(-2px);
+  }
+  .instance-check { font-size: 0.85rem; margin-bottom: 4px; display: block; }
+  .instance-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: #e2e8f0;
+    margin: 0 0 6px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+  }
+  .instance-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .instance-grams, .instance-time {
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 99px;
+    font-weight: 700;
+  }
+  .instance-grams { background: rgba(34,211,238,0.15); color: #67e8f9; }
+  .instance-time  { background: rgba(250,204,21,0.15); color: #fde047; }
+
+  /* ── 已选配置横幅 ── */
+  .selected-banner {
+    margin-top: 14px;
+    background: rgba(34,197,94,0.1);
+    border: 2px solid rgba(34,197,94,0.3);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .selected-banner-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .selected-label { font-size: 0.7rem; color: #86efac; font-weight: 700; }
+  .selected-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+    color: #f1f5f9;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .selected-stats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+  .stat-pill {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 99px;
+  }
+  .stat-grams { background: rgba(34,211,238,0.2); color: #67e8f9; }
+  .stat-time  { background: rgba(250,204,21,0.2); color: #fde047; }
+
+  /* ── 颜色色块 ── */
+  .swatch-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .swatch {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    flex-shrink: 0;
+  }
+  .swatch-lg { width: 18px; height: 18px; }
+
+  /* ── 手动克数 ── */
+  .manual-row {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .manual-label { font-size: 0.82rem; color: #fca5a5; font-weight: 700; white-space: nowrap; }
+  .manual-input {
+    width: 72px;
+    background: rgba(255,255,255,0.08);
+    border: 1.5px solid rgba(248,113,113,0.4);
+    border-radius: 8px;
+    padding: 4px 8px;
+    color: #f1f5f9;
+    font-size: 0.88rem;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    outline: none;
+    text-align: center;
+  }
+  .manual-unit { font-size: 0.82rem; color: #94a3b8; font-weight: 700; }
+
+  /* ── 提交按钮 ── */
+  .btn-submit {
+    margin-top: 16px;
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    border: none;
+    border-radius: 16px;
+    color: white;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.05rem;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 24px rgba(34,197,94,0.4), 0 0 0 0 rgba(34,197,94,0.4);
+  }
+  .btn-submit:hover:not(:disabled) {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(34,197,94,0.5);
+  }
+  .btn-submit:active:not(:disabled) { transform: translateY(0); }
+  .btn-submit:disabled {
+    background: linear-gradient(135deg, #334155, #1e293b);
+    box-shadow: none;
+    cursor: not-allowed;
+    color: #64748b;
+  }
+
+  /* ── 错误提示 ── */
+  .error-box {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    color: #fca5a5;
+  }
+
+  /* ── 历史区 ── */
+  .history-section { display: flex; flex-direction: column; gap: 14px; }
+  .section-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.15rem;
+    background: linear-gradient(90deg, #fbbf24, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 48px 16px;
+    color: #475569;
+  }
+  .empty-icon { font-size: 3.5rem; margin-bottom: 12px; }
+  .empty-state p { font-size: 0.95rem; font-family: 'Nunito', sans-serif; font-weight: 700; }
+
+  .history-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .history-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .history-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+  }
+  .history-thumb {
+    width: 100%; aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+  }
+  .history-thumb-placeholder {
+    width: 100%; aspect-ratio: 1;
+    background: rgba(255,255,255,0.05);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.5rem;
+  }
+  .history-body { padding: 10px 12px 12px; }
+  .history-name {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.82rem;
+    color: #e2e8f0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+  .history-instance {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+  .history-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .history-grams { font-size: 0.75rem; color: #67e8f9; font-weight: 700; }
+  .history-date { font-size: 0.68rem; color: #475569; }
+
+  .btn-loadmore {
+    width: 100%;
+    padding: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    color: #94a3b8;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .btn-loadmore:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #e2e8f0; }
+  .btn-loadmore:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── 管理员面板 ── */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 20;
+  }
+  .admin-panel {
+    position: fixed;
+    z-index: 30;
+    background: #0f1729;
+    border: 1px solid rgba(255,255,255,0.1);
+    overflow-y: auto;
+    /* mobile: bottom sheet */
+    bottom: 0; left: 0; right: 0;
+    max-height: 82vh;
+    border-radius: 24px 24px 0 0;
+  }
+  @media (min-width: 768px) {
+    .admin-panel {
+      top: 0; right: 0; bottom: auto; left: auto;
+      max-height: 100vh;
+      height: 100%;
+      width: 320px;
+      border-radius: 24px 0 0 24px;
+    }
+  }
+  .admin-inner { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .admin-header { display: flex; justify-content: space-between; align-items: center; }
+  .admin-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.05rem;
+    color: #f1f5f9;
+  }
+  .admin-close {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+  }
+  .admin-close:hover { background: rgba(255,255,255,0.1); }
+
+  .login-form { display: flex; flex-direction: column; gap: 10px; }
+  .admin-input {
+    background: rgba(255,255,255,0.07);
+    border: 1.5px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 10px 14px;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    font-family: 'Nunito Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .admin-input:focus { border-color: #a78bfa; }
+  .admin-input::placeholder { color: #475569; }
+
+  .admin-stats {
+    background: rgba(255,255,255,0.04);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.88rem;
+    color: #94a3b8;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .stat-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .stat-row strong { color: #e2e8f0; font-family: 'Nunito', sans-serif; font-weight: 800; }
+  .stat-row.highlight strong { font-size: 1.05rem; }
+
+  .quota-form { display: flex; flex-direction: column; gap: 8px; }
+  .quota-btns { display: flex; gap: 8px; }
+  .btn-admin-action {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn-admin-action:hover { transform: translateY(-2px); }
+  .btn-admin-action:active { transform: translateY(0); }
+  .btn-blue  { background: linear-gradient(135deg,#3b82f6,#6366f1); color:white; box-shadow:0 4px 16px rgba(99,102,241,0.4); }
+  .btn-green { background: linear-gradient(135deg,#22c55e,#16a34a); color:white; box-shadow:0 4px 16px rgba(34,197,94,0.3); }
+  .btn-orange{ background: linear-gradient(135deg,#f97316,#dc2626); color:white; box-shadow:0 4px 16px rgba(249,115,22,0.3); }
+
+  .quota-log { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; }
+  .quota-log-title { font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .quota-log-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 0.8rem;
+  }
+  .pos { color: #4ade80; font-weight: 700; }
+  .neg { color: #f87171; font-weight: 700; }
+  .log-reason { color: #64748b; font-weight: 400; }
+  .log-date { color: #475569; font-size: 0.72rem; }
+  .error-text { font-size: 0.82rem; color: #fca5a5; margin: 0; }
+
+  .btn-logout {
+    width: 100%;
+    padding: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    color: #64748b;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .btn-logout:hover { background: rgba(255,255,255,0.08); color: #94a3b8; }
+
+  /* ── 响应式 ── */
+  @media (max-width: 480px) {
+    .history-grid { grid-template-columns: repeat(2, 1fr); }
+    .instances-grid { grid-template-columns: repeat(2, 1fr); }
+    .energy-num { font-size: 1.15rem; }
+    .logo-text { font-size: 0.95rem; }
+  }
+</style>
